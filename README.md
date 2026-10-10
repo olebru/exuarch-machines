@@ -4,6 +4,10 @@ Machines that people have built in [ExµArch](https://www.exuarch.com), the comp
 
 Every machine here shows up under **Community** in ExµArch, in **Machines** in the getting started drawer and in the **Gallery**. **Load a copy** copies a machine into your browser as one of your own, so you can change it as much as you like.
 
+## The placeholder
+
+`machines/placeholder.json` is a placeholder, so the collection does not look empty. It will be removed with the first community contribution: if yours is the first, you can delete it and its entry in `index.json` in your pull request, or leave that to the maintainer.
+
 ## Share a machine
 
 1. Build your machine in ExµArch and give it a short note: open **This machine** in the drawer and write what it is and what to try.

@@ -1,0 +1,139 @@
+{
+  "name": "PLACEHOLDER",
+  "description": "A placeholder, so the community collection is not empty. It will be removed as soon as the first machine from the community arrives. It is the minimal CPU from New\u2026, with an LCD and one instruction, CHR, that prints a character.",
+  "tagline": "Removed when the first real machine arrives",
+  "tags": ["placeholder", "lcd"],
+  "readme": "# PLACEHOLDER\n\n**This machine is a placeholder.** It is here so the community collection is not empty, and it will be removed with the first community contribution.\n\nHave you built a machine of your own? Share it: press **Export**, and open a pull request on [exuarch-machines](https://github.com/olebru/exuarch-machines) with the file and an entry in \u0060index.json\u0060. The repository\u0027s README says how. Your machine takes this one\u0027s place.\n\n## What it is\n\nThe minimal CPU you get from **New\u2026**: a [program counter](exuarch:device/pc), [memory](exuarch:device/mem), the [instruction register](exuarch:device/ir), a [status register](exuarch:device/status) and a [clock](exuarch:device/clk) on one bus. It has a fetch routine and NOP, JMP and HLT. It also has an [LCD](exuarch:device/lcd) and one instruction more: [CHR](exuarch:instruction/CHR) prints the character written after it.\n\n## Things to try\n\n1. Run [Hello from the placeholder](\u003Cexuarch:program/Hello from the placeholder\u003E) in [Run](exuarch:tab/Run).\n2. Change the text, and run it again.\n3. Build something better, and share it.",
+  "machine": {
+    "name": "PLACEHOLDER",
+    "buses": [
+      {
+        "id": "main",
+        "layout": { "x": 0, "y": 222 }
+      }
+    ],
+    "devices": [
+      {
+        "id": "pc",
+        "type": "register",
+        "name": "PC",
+        "bus": "main",
+        "layout": { "x": 30, "y": 40 }
+      },
+      {
+        "id": "ir",
+        "type": "instructionRegister",
+        "name": "IR",
+        "bus": "main",
+        "layout": { "x": 30, "y": 278 }
+      },
+      {
+        "id": "mem",
+        "type": "ram",
+        "name": "MEMORY",
+        "bus": "main",
+        "layout": { "x": 240, "y": 40 }
+      },
+      {
+        "id": "status",
+        "type": "statusRegister",
+        "name": "STATUS",
+        "bus": "main",
+        "layout": { "x": 240, "y": 278 }
+      },
+      {
+        "id": "clk",
+        "type": "clock",
+        "name": "CLOCK",
+        "layout": { "x": 450, "y": 40 }
+      },
+      {
+        "id": "lcd",
+        "type": "display",
+        "name": "LCD",
+        "bus": "main",
+        "parameters": { "columns": 20, "rows": 2 },
+        "layout": { "x": 450, "y": 278 }
+      }
+    ],
+    "decoder": {
+      "status": "status",
+      "instructionRegister": "ir",
+      "microcode": {
+        "name": "PLACEHOLDER microcode",
+        "fetch": {
+          "mnemonic": "FETCH",
+          "description": "Load the opcode at the program counter into the instruction register and step past it",
+          "steps": [
+            {
+              "signals": ["pc.output", "mem.loadmar"]
+            },
+            {
+              "signals": ["mem.output", "ir.load", "pc.inc"]
+            }
+          ]
+        },
+        "instructions": [
+          {
+            "mnemonic": "NOP",
+            "description": "Do nothing",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JMP",
+            "description": "Jump to the address",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "CHR",
+            "description": "Print the character written after CHR on the LCD",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "lcd.load", "pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "HLT",
+            "description": "Halt the machine",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["clk.disable"]
+              }
+            ]
+          }
+        ]
+      },
+      "layout": { "x": 660, "y": 40 }
+    },
+    "halt": "clk",
+    "programMemory": "mem"
+  },
+  "programs": [
+    {
+      "name": "Hello from the placeholder",
+      "description": "Prints a note on the LCD, one CHR per character",
+      "source": "; Hello from the placeholder\n; This machine only keeps the community collection from looking empty. It goes away with the first machine\n; someone shares. CHR prints the character written after it, so this program is the text, one character a line.\n        CHR   \u0027J\u0027\n        CHR   \u0027u\u0027\n        CHR   \u0027s\u0027\n        CHR   \u0027t\u0027\n        CHR   \u0027 \u0027\n        CHR   \u0027a\u0027\n        CHR   \u0027 \u0027\n        CHR   \u0027p\u0027\n        CHR   \u0027l\u0027\n        CHR   \u0027a\u0027\n        CHR   \u0027c\u0027\n        CHR   \u0027e\u0027\n        CHR   \u0027h\u0027\n        CHR   \u0027o\u0027\n        CHR   \u0027l\u0027\n        CHR   \u0027d\u0027\n        CHR   \u0027e\u0027\n        CHR   \u0027r\u0027\n        CHR   10          ; a new line\n        CHR   \u0027Y\u0027\n        CHR   \u0027o\u0027\n        CHR   \u0027u\u0027\n        CHR   \u0027r\u0027\n        CHR   \u0027s\u0027\n        CHR   \u0027 \u0027\n        CHR   \u0027c\u0027\n        CHR   \u0027o\u0027\n        CHR   \u0027u\u0027\n        CHR   \u0027l\u0027\n        CHR   \u0027d\u0027\n        CHR   \u0027 \u0027\n        CHR   \u0027b\u0027\n        CHR   \u0027e\u0027\n        CHR   \u0027 \u0027\n        CHR   \u0027h\u0027\n        CHR   \u0027e\u0027\n        CHR   \u0027r\u0027\n        CHR   \u0027e\u0027\n        HLT"
+    }
+  ]
+}

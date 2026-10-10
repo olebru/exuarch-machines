@@ -1,3 +1,13 @@
 {
-  "machines": []
+  "machines": [
+    {
+      "name": "PLACEHOLDER",
+      "author": "ExµArch",
+      "tagline": "Removed when the first real machine arrives",
+      "description": "A placeholder, so the community collection is not empty. It will be removed with the first community contribution. Share a machine of your own and it takes this one's place.",
+      "tags": ["placeholder", "lcd"],
+      "minVersion": "1.39.0",
+      "file": "machines/placeholder.json"
+    }
+  ]
 }
