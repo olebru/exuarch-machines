@@ -7,7 +7,7 @@ MAX_INDEX = 512 * 1024
 MAX_PACKAGE = 4 * 1024 * 1024
 MAX_IMAGE = 1024 * 1024
 BUILT_IN = {
-    "TINY-16", "BYOC-16", "STACK-16", "CISC-16", "COPRO-16", "FIELD-16", "HARVARD-16", "IRQ-16", "MOVE-16",
+    "TINY-16", "BEN-16", "BYOC-16", "STACK-16", "CISC-16", "COPRO-16", "FIELD-16", "HARVARD-16", "IRQ-16", "MOVE-16",
     "RISC-16", "ROM-16", "BLAZE-16", "DSP-16", "FLIP-16", "GPU-16", "TURBO-16", "WORM-16",
 }
 VERSION = re.compile(r"^v?\d+\.\d+(\.\d+)?$")
