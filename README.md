@@ -2,7 +2,7 @@
 
 Machines that people have built in [ExµArch](https://www.exuarch.com), the computer architecture playground, and shared for others to load, take apart and learn from.
 
-Every machine here shows up under **Community** in ExµArch, in **Machines** in the getting started drawer and in the **Gallery**. **Load a copy** copies a machine into your browser as one of your own, so you can change it as much as you like.
+Every machine here shows up in ExµArch on the **Community** tab of the gallery: press **Community** at the top of **Machines** in the getting started drawer. Browse the machines there, and **Add to my machines** copies one into your browser as one of your own, so you can change it as much as you like.
 
 ## The placeholder
 
@@ -37,7 +37,7 @@ Every machine here shows up under **Community** in ExµArch, in **Machines** in 
 - `tagline` is the few words shown next to the name. Keep it under 50 characters.
 - `description` is shown when someone opens your machine's details.
 - `tags` are topics that search finds it by. Tag it `graphics` if it draws on the screen.
-- `minVersion` is the oldest ExµArch your machine works in. Use the version shown at the bottom of the page you built it in. An older ExµArch shows your machine but won't load it.
+- `minVersion` is the oldest ExµArch your machine works in. Use the version shown at the bottom of the page you built it in. An older ExµArch lists your machine with **Add to my machines** disabled.
 - `file` and `image` are paths inside this repository.
 
 A check runs on every pull request. It makes sure `index.json` is valid, that every file is there and is an ExµArch package with the same name, and that nothing is too large: 4 MB for a package and 512 KB for the index.
