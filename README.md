@@ -48,4 +48,4 @@ An ExµArch package is data, not code: buses, devices, microcode, assembly and M
 
 ## License
 
-Machines shared here are under the MIT license, the same as ExµArch itself, unless their note says otherwise. By opening a pull request you agree to share your machine that way.
+Every machine shared here is under the MIT license, the same as ExµArch itself. By opening a pull request you agree to share your machine under it.
