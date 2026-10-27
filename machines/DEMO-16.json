@@ -1,0 +1,1385 @@
+{
+  "name": "DEMO-16",
+  "description": "A demo machine built from TURBO-16: a blitter beside the rasterizer, a frame clock, 64K of memory and an instruction made for the scroller. Copper bars, a starfield, a sine scroller and a shaded icosahedron, each on a steady beat at 1 MHz, and then all of them at once.",
+  "readme": "# DEMO-16\n\nWhat can a 16 bit machine show at one megahertz? DEMO-16 is [TURBO-16](exuarch:package/TURBO-16) with a few parts added in the hardware and microcode editors, the way anyone could:\n\n- a [blitter](exuarch:device/blit) that fills rectangles on the same screen as the [rasterizer](exuarch:device/rast), with instructions to drive it (\u0060BX\u0060, \u0060BY\u0060, \u0060BW\u0060, \u0060BH\u0060, \u0060BC\u0060 and their immediate forms, [BGO](exuarch:instruction/BGO) and [BST](exuarch:instruction/BST));\n- a [frame clock](exuarch:device/rtc) and [BEATS](exuarch:device/pic), so a program shows each frame on a steady beat in real time ([TIMI](exuarch:instruction/TIMI), [TST](exuarch:instruction/TST), [TACK](exuarch:instruction/TACK));\n- [MEMORY](exuarch:device/mem) grown from 4K to the whole 64K, for tables worked out in advance;\n- [BYGO](exuarch:instruction/BYGO), an instruction made for the scroller: it waits for the blitter, gives it a row and starts it, so one dot of a letter is one instruction.\n\nFive programs: four effects, and then all four at once. Set the clock to **1 MHz** (the right end of the slider) or run at **\u26A1 Max**. The beat is real time, so at a slower clock a frame misses its beat and the picture slows down; at a faster one it keeps to the beat.\n\n| Program | Ticks a frame takes | Beat | Frames a second at 1 MHz |\n|---|---|---|---|\n| [The whole demo](\u003Cexuarch:program/The whole demo\u003E) | 77,070 at most | 80 ms | 12.5 |\n| [Copper bars](\u003Cexuarch:program/Copper bars\u003E) | 58,115 at most | 60 ms | 16.7 |\n| [Starfield](exuarch:program/Starfield) | 36,217 at most | 40 ms | 25 |\n| [Sine scroller](\u003Cexuarch:program/Sine scroller\u003E) | 26,039 at most | 33 ms | 30 |\n| [A shaded icosahedron](\u003Cexuarch:program/A shaded icosahedron\u003E) | 33,678 at most | 40 ms | 25 |\n\n## The budget\n\nThe screen is 640 by 480, 307,200 pixels, and whatever draws on it, the rasterizer or the blitter, fills one pixel a tick. Clearing the whole screen ([CLS](exuarch:instruction/CLS)) and showing a finished frame ([SWAP](exuarch:instruction/SWAP)) are one tick each. So redrawing every pixel would take a third of a second, and a frame at 25 a second has 40,000 ticks: room for an eighth of the screen. Each effect keeps the background black, which is free, and draws only what moves.\n\nThe rasterizer and the blitter work on their own while the CPU runs on, so the programs give the CPU the next frame\u0027s sums while a frame is drawn. They share one video bus, though, so they must never draw at the same time: two devices driving one bus is an error. [GST](exuarch:instruction/GST) and [BST](exuarch:instruction/BST) say when each is done.\n\n## The effects\n\n**Copper bars.** Each bar goes round a circle seen edge on, so it rides up and down the screen. It is four bands of two triangles each, right across the screen, and the rasterizer blends the corner colours: dark edge, colour, a near white shine in the middle, colour, dark edge. The bars on the far side of the circle are drawn first, dimmer, so the near ones pass in front of them. Six bars 14 pixels thick are 53,760 pixels, so this one is all fill: the rasterizer is busy 95% of the time.\n\n**Starfield.** Each star has an x and a y across the sky and a distance z that shrinks every frame. It is drawn at \u0060320 \u002B x * 64 / z\u0060, with the [multiply-accumulate unit](exuarch:device/mac) doing the division ([MDIV](exuarch:instruction/MDIV)). One compare finds a star off either edge, because a negative coordinate is a large unsigned number. A star that comes too close or leaves the screen starts again far away. The blitter is idle 98% of the time: a star is at most 9 pixels, and it is the CPU\u0027s 220 ticks of sums per star that set the pace.\n\n**Sine scroller.** The font is 5 by 7 dots, one cell per column of a letter with a bit for each dot. Each dot is a 6 by 6 blitter square. The CPU sets the blitter\u0027s column and colour once per column, then tests the seven bits one after another, with no loop, and sends each dot that is there with \u0060BYGO\u0060. The wave\u0027s height for each of its 128 half steps is worked out once, at the start, into a table.\n\n**A shaded icosahedron.** Every frame the CPU turns the twelve corners about two axes with the multiply-accumulate unit, and shades each corner by how much it faces the viewer: one of 16 steps of its face\u0027s colour, the brightest going towards white. It keeps only the faces whose corners go round the screen the right way, with the cross product in [xp](exuarch:device/xp), as TURBO-16 does. As the icosahedron is convex, the faces it keeps never cover each other, so there is no depth buffer and every pixel takes one tick.\n\n**The whole demo.** First it works out the icosahedron for all 128 frames of its tumble, which then repeats, while a bar grows across the screen: about two seconds at 1 MHz. After that, each frame:\n\n1. The blitter draws the stars, worked out during the frame before.\n2. The rasterizer draws one triangle list: five bars on the far side of their circle, the icosahedron, the bars on the near side, so the chain of bars goes round it. The icosahedron\u0027s triangles are only copied in, with [COPYT](exuarch:instruction/COPYT).\n3. Meanwhile the CPU works out the next frame\u0027s stars and bars, and where every column of this frame\u0027s scroller goes.\n4. When the rasterizer is done, the blitter draws the scroller from those columns, as fast as \u0060BYGO\u0060 can feed it.\n\nEvery part of the CPU\u0027s work fits into the time the rasterizer or the blitter is drawing, so neither of them waits for long.\n\n## Things to try\n\n1. Run each program with the **Trace** shut and watch the clock graph: it sits at 1 MHz, and the frames come on the beat.\n2. In [Copper bars](\u003Cexuarch:program/Copper bars\u003E), change \u0060TIMI 60\u0060 to \u0060TIMI 40\u0060. The bars need 58,115 ticks, more than the 40 ms beat holds at 1 MHz, so frames miss beats and the motion stutters.\n3. In [Starfield](exuarch:program/Starfield), change \u0060SUBI 3\u0060 to \u0060SUBI 8\u0060: warp speed, as every star comes nearer more than twice as fast.\n4. In [A shaded icosahedron](\u003Cexuarch:program/A shaded icosahedron\u003E), change the \u0060JMI fnext\u0060 in \u0060build\u0060 to \u0060JPL fnext\u0060: you see the inside of the far faces.\n5. In [The whole demo](\u003Cexuarch:program/The whole demo\u003E), move \u0060CALL dots\u0060 to just after \u0060GO\u0060, so the blitter draws while the rasterizer still does. Two devices drive the video bus in the same tick, and the machine stops with an error.\n6. Open **BYGO** in the [Microcode](exuarch:tab/Microcode) tab: four steps, two of them only when the blitter is idle. Tick through one in the Run view while the blitter is busy and watch it fetch itself again.\n7. Change the message: it is the \u0060msg\u0060 lines at the end of [Sine scroller](\u003Cexuarch:program/Sine scroller\u003E), capital letters, digits and \u0060! , - . :\u0060 only.\n\n## Read more\n\n- [TURBO-16](exuarch:package/TURBO-16), where the rasterizer half of this machine comes from, and [COPRO-16](exuarch:package/COPRO-16), where the blitter does.\n- [The graphics pipeline](exuarch:guide/graphics-pipeline): triangles, shading and projection.\n- [Bus masters and coprocessors](exuarch:guide/bus-masters): devices that draw on a bus of their own while the CPU runs on.\n- [Microcode](exuarch:guide/microcode): how an instruction like \u0060BYGO\u0060 is made of steps.",
+  "machine": {
+    "name": "DEMO-16",
+    "buses": [
+      {
+        "id": "main",
+        "layout": { "x": 0, "y": 222 }
+      },
+      {
+        "id": "list",
+        "layout": { "x": 0, "y": 626 }
+      },
+      {
+        "id": "video",
+        "layout": { "x": 0, "y": 869 }
+      }
+    ],
+    "devices": [
+      {
+        "id": "pc",
+        "type": "register",
+        "name": "PC",
+        "bus": "main",
+        "layout": { "x": 30, "y": 40 }
+      },
+      {
+        "id": "ir",
+        "type": "instructionRegister",
+        "name": "IR",
+        "bus": "main",
+        "layout": { "x": 1290, "y": 40 }
+      },
+      {
+        "id": "mem",
+        "type": "ram",
+        "name": "MEMORY",
+        "bus": "main",
+        "parameters": { "size": 65536 },
+        "layout": { "x": 240, "y": 40 }
+      },
+      {
+        "id": "flags",
+        "type": "statusRegister",
+        "name": "FLAGS",
+        "bus": "main",
+        "layout": { "x": 870, "y": 278 }
+      },
+      {
+        "id": "sp",
+        "type": "register",
+        "name": "SP",
+        "bus": "main",
+        "layout": { "x": 450, "y": 40 }
+      },
+      {
+        "id": "a",
+        "type": "register",
+        "name": "A",
+        "bus": "main",
+        "layout": { "x": 450, "y": 278 }
+      },
+      {
+        "id": "clk",
+        "type": "clock",
+        "name": "CLOCK",
+        "layout": { "x": 1500, "y": 40 }
+      },
+      {
+        "id": "b",
+        "type": "register",
+        "name": "B",
+        "bus": "main",
+        "layout": { "x": 240, "y": 278 }
+      },
+      {
+        "id": "t",
+        "type": "register",
+        "name": "ALU OPERAND",
+        "bus": "main",
+        "layout": { "x": 660, "y": 40 }
+      },
+      {
+        "id": "alu",
+        "type": "alu",
+        "name": "ALU",
+        "bus": "main",
+        "connections": { "a": "a", "b": "t", "status": "flags" },
+        "layout": { "x": 660, "y": 278 }
+      },
+      {
+        "id": "mac",
+        "type": "mac",
+        "name": "MULTIPLY-ACCUMULATE",
+        "bus": "main",
+        "layout": { "x": 870, "y": 40 }
+      },
+      {
+        "id": "xp",
+        "type": "mac",
+        "name": "CROSS PRODUCT",
+        "bus": "main",
+        "parameters": { "shift": 0 },
+        "layout": { "x": 1290, "y": 278 }
+      },
+      {
+        "id": "bridge",
+        "type": "dualPortRegister",
+        "name": "TO THE LIST BUS",
+        "buses": { "a": "main", "b": "list" },
+        "layout": { "x": 1080, "y": 278 }
+      },
+      {
+        "id": "lp",
+        "type": "register",
+        "name": "LIST POINTER",
+        "bus": "main",
+        "layout": { "x": 1080, "y": 40 }
+      },
+      {
+        "id": "mp",
+        "type": "register",
+        "name": "MEMORY POINTER",
+        "bus": "main",
+        "layout": { "x": 1500, "y": 278 }
+      },
+      {
+        "id": "lmem",
+        "type": "ram",
+        "name": "TRIANGLE LIST",
+        "bus": "list",
+        "parameters": { "size": 8192 },
+        "layout": { "x": 240, "y": 474 }
+      },
+      {
+        "id": "rast",
+        "type": "rasterizer",
+        "name": "RASTERIZER",
+        "buses": { "host": "main", "list": "list", "video": "video" },
+        "connections": { "screen": "fb", "memory": "lmem" },
+        "layout": { "x": 30, "y": 278 }
+      },
+      {
+        "id": "fb",
+        "type": "doubleFramebuffer",
+        "name": "SCREEN",
+        "bus": "video",
+        "layout": { "x": 240, "y": 717 }
+      },
+      {
+        "id": "blit",
+        "type": "blitter",
+        "name": "BLITTER",
+        "buses": { "host": "main", "video": "video" },
+        "connections": { "screen": "fb" },
+        "layout": { "x": 1710, "y": 278 }
+      },
+      {
+        "id": "rtc",
+        "type": "rtc",
+        "name": "FRAME CLOCK",
+        "bus": "main",
+        "parameters": { "interval": 40 },
+        "layout": { "x": 1920, "y": 278 }
+      },
+      {
+        "id": "pic",
+        "type": "interruptController",
+        "name": "BEATS",
+        "bus": "main",
+        "connections": { "irq0": "rtc" },
+        "layout": { "x": 2130, "y": 278 }
+      }
+    ],
+    "decoder": {
+      "status": "flags",
+      "instructionRegister": "ir",
+      "microcode": {
+        "name": "TURBO-16 microcode",
+        "fetch": {
+          "mnemonic": "FETCH",
+          "description": "Load the opcode at the address in PC from MEMORY into IR and step PC past it; there is no interrupt check",
+          "steps": [
+            {
+              "signals": ["pc.output", "mem.loadmar"]
+            },
+            {
+              "signals": ["mem.output", "ir.load", "pc.inc"]
+            }
+          ]
+        },
+        "instructions": [
+          {
+            "mnemonic": "NOP",
+            "description": "Do nothing; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "HLT",
+            "description": "Stop the clock, halting the machine; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["clk.disable"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LDI",
+            "description": "A = the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "a.load"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LBI",
+            "description": "B = the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "b.load"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LBA",
+            "description": "B = the address after the opcode, for walking memory with LDX and STX (the same steps as LBI); flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "b.load"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LDA",
+            "description": "A = the MEMORY cell at the address after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "mem.loadmar", "pc.inc"]
+              },
+              {
+                "signals": ["mem.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "STA",
+            "description": "Store A in the MEMORY cell at the address after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "mem.loadmar", "pc.inc"]
+              },
+              {
+                "signals": ["a.output", "mem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LDX",
+            "description": "A = the MEMORY cell at the address in B; B and flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "STX",
+            "description": "Store A in the MEMORY cell at the address in B; B and flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["a.output", "mem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "TAB",
+            "description": "B = A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "b.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "TBA",
+            "description": "A = B; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "INA",
+            "description": "A = A \u002B 1, wrapping from FFFF to 0; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "INB",
+            "description": "B = B \u002B 1, wrapping from FFFF to 0; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "DEB",
+            "description": "B = B - 1, wrapping from 0 to FFFF; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.dec", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "ADD",
+            "description": "A = A \u002B B; sets Z and N, C on carry out and V on signed overflow",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "t.load"]
+              },
+              {
+                "signals": ["alu.add", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "SUB",
+            "description": "A = A - B; sets Z and N, C if A \u003C B unsigned (a borrow) and V on signed overflow",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "t.load"]
+              },
+              {
+                "signals": ["alu.sub", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "AND",
+            "description": "A = A AND B, bit by bit; sets Z and N, clears C and V",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "t.load"]
+              },
+              {
+                "signals": ["alu.and", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "ADDI",
+            "description": "A = A \u002B the value after the opcode; sets Z and N, C on carry out and V on signed overflow",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.add", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "SUBI",
+            "description": "A = A - the value after the opcode; sets Z and N, C if A \u003C the value unsigned (a borrow) and V on signed overflow",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.sub", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "ANDI",
+            "description": "A = A AND the value after the opcode, bit by bit; sets Z and N, clears C and V",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.and", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "EORI",
+            "description": "A = A XOR the value after the opcode, bit by bit; sets Z and N, clears C and V",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.eor", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LSRI",
+            "description": "A = A shifted right, filling with 0, by the low 4 bits of the value after the opcode (0-15); sets Z and N, C to the last bit shifted out (clear for a shift of 0), clears V",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.lsr", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "CMPI",
+            "description": "Set the flags for A - the value after the opcode without changing A: Z if equal, C if A \u003C the value unsigned, N from bit 15 of the difference, V on signed overflow",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "pc.inc"]
+              },
+              {
+                "signals": ["alu.cmp", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JMP",
+            "description": "Jump to the address after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JEQ",
+            "description": "Jump to the address after the opcode if Z is set (equal after CMPI); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "Z": true },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "Z": true },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JNE",
+            "description": "Jump to the address after the opcode if Z is clear (not equal after CMPI); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "Z": false },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "Z": true },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JCS",
+            "description": "Jump to the address after the opcode if C is set (A \u003C the value unsigned after CMPI, or a carry out of ADD); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "C": true },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "C": true },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "C": false },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JCC",
+            "description": "Jump to the address after the opcode if C is clear (A \u003E= the value unsigned after CMPI, or no carry out of ADD); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "C": false },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "C": false },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "C": true },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "CALL",
+            "description": "Push the address of the next instruction (SP is decremented first, then the address is stored at SP in MEMORY) and jump to the address after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar", "pc.inc"]
+              },
+              {
+                "signals": ["mem.output", "t.load", "sp.dec"]
+              },
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["pc.output", "mem.load"]
+              },
+              {
+                "signals": ["t.output", "pc.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "RET",
+            "description": "Return: PC = the MEMORY cell at SP, then SP is incremented; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.load", "sp.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "PSA",
+            "description": "Push A: SP is decremented first, then A is stored at SP in MEMORY (a full descending stack); flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["sp.dec"]
+              },
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["a.output", "mem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "POA",
+            "description": "Pop A: A = the MEMORY cell at SP, then SP is incremented; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "a.load", "sp.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "PSB",
+            "description": "Push B: SP is decremented first, then B is stored at SP in MEMORY (a full descending stack); flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["sp.dec"]
+              },
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["b.output", "mem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "POB",
+            "description": "Pop B: B = the MEMORY cell at SP, then SP is incremented; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["sp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "b.load", "sp.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "CLS",
+            "description": "Clear the back buffer of SCREEN to 0 (black), out of sight, and move its cursor to the top left; the picture shown is unchanged; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["fb.clear", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JMI",
+            "description": "Jump to the address after the opcode if N is set (bit 15 of the last ALU result set: negative); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "N": true },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "N": true },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "N": false },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "JPL",
+            "description": "Jump to the address after the opcode if N is clear (bit 15 of the last ALU result clear: positive or zero); otherwise go on with the next instruction. Flags unchanged",
+            "operands": 1,
+            "operandTypes": ["address"],
+            "steps": [
+              {
+                "when": { "N": false },
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "when": { "N": false },
+                "signals": ["mem.output", "pc.load", "ir.reset"]
+              },
+              {
+                "when": { "N": true },
+                "signals": ["pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "STL",
+            "description": "Store A in the TRIANGLE LIST cell at the address in B through the bridge register, which is left holding A. Only while the rasterizer is idle: while it reads the list both drive the list bus at once",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["b.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar"]
+              },
+              {
+                "signals": ["a.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "GADR",
+            "description": "Set the rasterizer\u0027s triangle list start address from A; it is taken at once, so a change mid-job moves the triangles not yet read. Flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "rast.loadaddr", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "GCNT",
+            "description": "Set the number of triangles the rasterizer draws, 12 list words each, from A; it is taken at once, even mid-job. Flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "rast.loadcount", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "GO",
+            "description": "Start the rasterizer if it is idle and its count is not 0 (otherwise ignored). It reads each triangle\u0027s x, y, z and RGB565 colour per corner and fills it, plotting a pixel only where its z is below the depth buffer\u0027s, while the CPU carries on",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["rast.start", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "GST",
+            "description": "A = the rasterizer\u0027s status: 1 while it is busy, 0 when it is idle; flags unchanged, so follow with CMPI to branch",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["rast.status", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MA",
+            "description": "Set the multiply-accumulate unit\u0027s operand a to A, read as a signed 16-bit number; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "mac.loada", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MB",
+            "description": "Set the multiply-accumulate unit\u0027s operand b to A, read as a signed 16-bit number; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "mac.loadb", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MAI",
+            "description": "Set the multiply-accumulate unit\u0027s operand a to the value after the opcode, read as a signed 16-bit number; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "mac.loada"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MBI",
+            "description": "Set the multiply-accumulate unit\u0027s operand b to the value after the opcode, read as a signed 16-bit number; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "mac.loadb"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MUL",
+            "description": "Accumulator = a \u00D7 b, signed, clamped to a signed 32-bit range (8.8 times 8.8 gives 16.16); flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["mac.mul", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MAC",
+            "description": "Accumulator = accumulator \u002B a \u00D7 b, signed, clamped to a signed 32-bit range; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["mac.mac", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MDIV",
+            "description": "Accumulator = accumulator \u00D7 256 / b, signed, rounded toward 0 and clamped to 32 bits; b = 0 gives the largest value with the accumulator\u0027s sign. Flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["mac.div", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "MRD",
+            "description": "A = the accumulator shifted right by 8, sign kept, clamped to -32768..32767 (the 8.8 fixed-point result); accumulator and flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["mac.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "SWAP",
+            "description": "Swap SCREEN\u0027s buffers: show the frame drawn in the back buffer, and draw on the old front one from now on, which still holds the frame before last; cursor and flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["fb.swap", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "XA",
+            "description": "xp.a = A",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "xp.loada", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "XB",
+            "description": "xp.b = A",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "xp.loadb", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "XMUL",
+            "description": "xp = xp.a * xp.b",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["xp.mul", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "XMAC",
+            "description": "xp \u002B= xp.a * xp.b",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["xp.mac", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "XRD",
+            "description": "A = xp, clamped to 16 bits; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["xp.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "LPA",
+            "description": "A = the list pointer",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["lp.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "ALP",
+            "description": "The list pointer = A",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "lp.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "PUT",
+            "description": "A into the triangle list at the list pointer, and step the pointer on",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar"]
+              },
+              {
+                "signals": ["a.output", "bridge.loada", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "AMP",
+            "description": "The memory pointer = A",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "mp.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "PUTM",
+            "description": "A into memory at the memory pointer, and step the pointer on",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["a.output", "mem.load", "mp.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "COPYT",
+            "description": "One triangle, 12 words, from memory at the memory pointer into the triangle list at the list pointer; both pointers step on",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "lp.output", "bridge.loada"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.loadmar", "mp.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "bridge.loada", "mp.inc", "lp.inc"]
+              },
+              {
+                "signals": ["bridge.outputb", "lmem.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "WAITGO",
+            "description": "Wait for the rasterizer, then SWAP, CLS, and start it on the block at the memory pointer with the list pointer triangles",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["rast.status", "flags.load"]
+              },
+              {
+                "when": { "Z": true },
+                "signals": ["pc.dec", "ir.reset"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["fb.swap", "mp.output", "rast.loadaddr"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["fb.clear", "lp.output", "rast.loadcount", "rast.start", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BX",
+            "description": "Set the blitter\u0027s left column to A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "blit.loadx", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BXI",
+            "description": "Set the blitter\u0027s left column to the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "blit.loadx"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BY",
+            "description": "Set the blitter\u0027s top row to A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "blit.loady", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BYI",
+            "description": "Set the blitter\u0027s top row to the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "blit.loady"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BW",
+            "description": "Set the blitter\u0027s rectangle width to A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "blit.loadw", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BWI",
+            "description": "Set the blitter\u0027s rectangle width to the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "blit.loadw"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BH",
+            "description": "Set the blitter\u0027s rectangle height to A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "blit.loadh", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BHI",
+            "description": "Set the blitter\u0027s rectangle height to the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "blit.loadh"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BC",
+            "description": "Set the blitter\u0027s fill colour (RGB565) to A; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "blit.loadcolour", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BCI",
+            "description": "Set the blitter\u0027s fill colour (RGB565) to the value after the opcode; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "pc.inc", "ir.reset", "blit.loadcolour"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BGO",
+            "description": "Start the blitter filling its rectangle on the screen, one pixel per tick while the CPU runs on; ignored if it is busy or the rectangle is empty. Never while the rasterizer draws: they share the video bus",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["blit.start", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BST",
+            "description": "A = the blitter\u0027s status: 1 while it is filling, 0 when idle; flags unchanged, so follow with CMPI to branch",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["blit.status", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "BYGO",
+            "description": "Wait for the blitter, then set its top row to A and start it: one dot of a column in one instruction. While the blitter is busy it fetches itself again, four ticks a round. The flags are left as the blitter\u0027s status",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["blit.status", "flags.load"]
+              },
+              {
+                "when": { "Z": true },
+                "signals": ["pc.dec", "ir.reset"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["a.output", "blit.loady"]
+              },
+              {
+                "when": { "Z": false },
+                "signals": ["blit.start", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "TIMI",
+            "description": "Start FRAME CLOCK, the real time clock, beating every value milliseconds of real time; flags unchanged",
+            "operands": 1,
+            "operandTypes": ["value"],
+            "steps": [
+              {
+                "signals": ["pc.output", "mem.loadmar"]
+              },
+              {
+                "signals": ["mem.output", "rtc.loadinterval", "rtc.start", "pc.inc", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "TST",
+            "description": "A = 1 when FRAME CLOCK has beaten since the last TACK, 0 when it has not; flags unchanged, so follow with CMPI 0",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["pic.output", "a.load", "ir.reset"]
+              }
+            ]
+          },
+          {
+            "mnemonic": "TACK",
+            "description": "Take the beat TST saw: clear the beats set in A, so TST waits for the next one; flags unchanged",
+            "operands": 0,
+            "steps": [
+              {
+                "signals": ["a.output", "pic.ack", "ir.reset"]
+              }
+            ]
+          }
+        ]
+      },
+      "layout": { "x": 1710, "y": 40 }
+    },
+    "halt": "clk",
+    "programMemory": "mem"
+  },
+  "programs": [
+    {
+      "name": "The whole demo",
+      "description": "Stars, copper bars round a shaded icosahedron and a scroller, with the blitter and the rasterizer taking turns at the screen",
+      "source": "; The whole demo\n; Stars, copper bars round a shaded icosahedron, and a sine scroller, all at once. One video bus feeds the screen, so\n; the blitter and the rasterizer take turns at it, and the CPU never waits for either if it can help it. Each frame:\n; 1. the blitter draws the stars, worked out the frame before;\n; 2. the rasterizer draws one list: the bars behind, the icosahedron, the bars in front;\n; 3. meanwhile the CPU works out the next frame\u0027s stars and bars, and where every column of this frame\u0027s scroller goes;\n; 4. then the blitter draws the scroller from those columns, a dot at a time with BYGO.\n; The icosahedron turns through 128 frames and then repeats, so its triangles for every frame are worked out once, at\n; the start, while a bar shows how far it has got: after that it costs the CPU nothing but a copy.\n; MEMORY above the program: the stars to draw from 40000, the scroller\u0027s wave heights from 40400 and its columns from\n; 40600, the bars\u0027 triangles from 41000 and 41600, the icosahedron\u0027s 128 frames from 43000 with their sizes from 61500,\n; and the stack at the top.\n           CALL     waves                       ; the scroller\u0027s wave heights, once\n           CALL     precalc                     ; and the icosahedron\u0027s 128 frames\n           CALL     plan                        ; the first frame\u0027s stars and triangles\n           TIMI     80                          ; then a frame every 80 ms: about 12 a second\nframe:     CALL     drawstars                   ; 1. the stars\nswait:     BST\n           CMPI     0\n           JNE      swait\n           LDI      0                           ; 2. the list: the bars behind, the icosahedron, the bars in front\n           ALP\n           LBA      41000\n           TBA\n           AMP\n           LDA      nb\n           CALL     copyn\n           LDA      icoat\n           AMP\n           LDA      nico\n           CALL     copyn\n           LBA      41600\n           TBA\n           AMP\n           LDA      nf\n           CALL     copyn\n           LDI      0\n           GADR\n           LDA      nb\n           TAB\n           LDA      nico\n           ADD\n           TAB\n           LDA      nf\n           ADD\n           GCNT\n           GO\n           LDA      t                           ; 3. the next frame, and this one\u0027s scroller, while it is drawn\n           INA\n           STA      t\n           CALL     plan\n           CALL     prep\nrwait:     GST\n           CMPI     0\n           JNE      rwait\n           CALL     dots                        ; 4. the scroller on top\n           CALL     advance\nbwait:     BST\n           CMPI     0\n           JNE      bwait\nbeat:      TST\n           CMPI     0\n           JEQ      beat\n           TACK\n           SWAP\n           CLS\n           JMP      frame\n\n; copyn: A triangles from MEMORY at mp into the triangle list at lp\ncopyn:     CMPI     0\n           JEQ      cdone\n           STA      count\ncloop:     COPYT\n           LDA      count\n           SUBI     1\n           STA      count\n           JNE      cloop\ncdone:     RET\n\n; plan: frame t\u0027s stars into starbuf, its bars into the two triangle blocks, and where its icosahedron is\nplan:      CALL     stars\n           LBA      41000\n           TBA\n           AMP\n           LDI      0\n           STA      ntri\n           STA      pass\n           CALL     bars\n           LDA      ntri\n           STA      nb\n           LBA      41600\n           TBA\n           AMP\n           LDI      0\n           STA      ntri\n           LDI      1\n           STA      pass\n           CALL     bars\n           LDA      ntri\n           STA      nf\n           CALL     icoblock\n           RET\n\n; icoblock: where the icosahedron\u0027s triangles for frame t are, worked out by precalc: icoat and nico\nicoblock:  LDA      t                           ; block t mod 128, 144 cells each: room for 12 triangles\n           ANDI     127\n           STA      idx\n           XA\n           LDI      144\n           XB\n           XMUL\n           XRD\n           ADDI     43000\n           STA      icoat\n           LBA      61500\n           LDA      idx\n           ADD\n           TAB\n           LDX\n           STA      nico\n           RET\n\n; precalc: the icosahedron turns through 128 frames and then repeats, so all of them are worked out first, with a\n; bar growing across the screen to show how far it has got\nprecalc:   LDI      0\n           STA      t\npcblock:   CALL     icoblock\n           CALL     turn\n           LDA      icoat\n           AMP\n           LDI      0\n           STA      ntri\n           CALL     build\n           LBA      61500                       ; how many triangles it has\n           LDA      idx\n           ADD\n           TAB\n           LDA      ntri\n           STX\npcwait:    BST                                  ; the bar: 4 pixels for every frame done\n           CMPI     0\n           JNE      pcwait\n           BXI      64\n           BYI      236\n           BHI      8\n           BCI      0x07FF\n           LDA      t\n           TAB\n           ADD\n           TAB\n           ADD\n           ADDI     4\n           BW\n           BGO\npcshow:    BST\n           CMPI     0\n           JNE      pcshow\n           SWAP\n           LDA      t\n           INA\n           STA      t\n           CMPI     128\n           JNE      pcblock\n           CLS                                  ; clear both buffers\n           SWAP\n           CLS\n           LDI      0\n           STA      t\n           RET\n\n; ---- Stars ----\n\n; stars: each star a step nearer; those on the screen go into starbuf as x, y, size and colour, nstar of them\nstars:     LBA      stardata\n           TBA\n           STA      spt\n           LBA      40000\n           TBA\n           AMP\n           LDI      0\n           STA      nstar\n           LDI      60\n           STA      n\nstar:      LDA      spt                         ; x, y and z of this star\n           TAB\n           LDX\n           STA      vx\n           INB\n           LDX\n           STA      vy\n           INB\n           LDX                                  ; nearer: z = z - 3, or far away again\n           SUBI     3\n           CMPI     8\n           JCC      near\n           LDI      255\nnear:      STX\n           STA      z\n           TBA\n           STA      zp\n           INB\n           TBA\n           STA      spt\n           LDA      vx                          ; screen x = 320 \u002B x * 64 / z\n           MA\n           MBI      64\n           MUL\n           LDA      z\n           MB\n           MDIV\n           MRD\n           ADDI     320\n           CMPI     637\n           JCC      gone\n           STA      sx\n           LDA      vy                          ; screen y = 240 \u002B y * 64 / z\n           MA\n           MBI      64\n           MUL\n           LDA      z\n           MB\n           MDIV\n           MRD\n           ADDI     240\n           CMPI     477\n           JCC      gone\n           STA      sy\n           LDA      sx\n           PUTM\n           LDA      sy\n           PUTM\n           LDA      z                           ; the nearer, the bigger and brighter\n           CMPI     85\n           JCS      big\n           CMPI     170\n           JCS      mid\n           LDI      1\n           PUTM\n           LDI      0x9CF3\n           PUTM\n           JMP      kept\nmid:       LDI      2\n           PUTM\n           LDI      0xAD75\n           PUTM\n           JMP      kept\nbig:       LDI      3\n           PUTM\n           LDI      0xFFFF\n           PUTM\nkept:      LDA      nstar\n           INA\n           STA      nstar\n           JMP      snext\ngone:      LDA      zp                          ; off the screen: far away again\n           TAB\n           LDI      255\n           STX\nsnext:     LDA      n\n           SUBI     1\n           STA      n\n           JNE      star\n           RET\n\n; drawstars: the blitter draws the stars in starbuf; each is done before the CPU has the next one ready\ndrawstars: LDA      nstar\n           CMPI     0\n           JEQ      dsdone\n           STA      n\n           LBA      40000\nds:        LDX\n           BX\n           INB\n           LDX\n           BY\n           INB\n           LDX\n           BW\n           BH\n           INB\n           LDX\n           BC\n           INB\n           BGO\n           LDA      n\n           SUBI     1\n           STA      n\n           JNE      ds\ndsdone:    RET\n\n; ---- Copper bars ----\n\n; bars: the 5 bars on the far side of their circle when pass is 0, or on the near side when it is 1\nbars:      LDA      t\n           ANDI     63\n           STA      ph\n           LDI      0\n           STA      i\nbar:       LBA      cos_table                   ; behind when cos(ph) \u003C 0\n           LDA      ph\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JMI      bbehind\n           LDA      pass\n           CMPI     1\n           JNE      bnext\n           JMP      bdraw\nbbehind:   LDA      pass\n           CMPI     0\n           JNE      bnext\nbdraw:     LBA      sin_table                   ; yc = 200 \u002B sin(ph) * 120 / 256\n           LDA      ph\n           ADD\n           TAB\n           LDX\n           MA\n           MBI      120\n           MUL\n           MRD\n           ADDI     200\n           STA      yc\n           SUBI     6\n           STA      qy0\n           LDA      pass                        ; colours: pass * 6 \u002B i\n           CMPI     0\n           JEQ      colour\n           LDI      5\ncolour:    TAB\n           LDA      i\n           ADD\n           STA      ck\n           LBA      bright\n           ADD\n           TAB\n           LDX\n           STA      cmid\n           LBA      shine\n           LDA      ck\n           ADD\n           TAB\n           LDX\n           STA      cshine\n           LBA      dark\n           LDA      ck\n           ADD\n           TAB\n           LDX\n           STA      qc0                         ; four bands down the bar: edge, colour, shine, colour, edge\n           STA      cedge\n           LDA      yc\n           SUBI     2\n           STA      qy1\n           LDA      cmid\n           STA      qc1\n           CALL     quad\n           LDA      yc\n           STA      qy1\n           LDA      cshine\n           STA      qc1\n           CALL     quad\n           LDA      yc\n           ADDI     2\n           STA      qy1\n           LDA      cmid\n           STA      qc1\n           CALL     quad\n           LDA      yc\n           ADDI     6\n           STA      qy1\n           LDA      cedge\n           STA      qc1\n           CALL     quad\n           LDA      ntri\n           ADDI     8\n           STA      ntri\nbnext:     LDA      ph                          ; the next bar, a little further round\n           ADDI     7\n           ANDI     63\n           STA      ph\n           LDA      i\n           INA\n           STA      i\n           CMPI     5\n           JNE      bar\n           RET\n\n; quad: two triangles across the screen from row qy0 in colour qc0 to row qy1 in colour qc1, into MEMORY at mp;\n; then qy1 and qc1 become qy0 and qc0, for the band below\nquad:      LDI      0\n           PUTM\n           LDA      qy0\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc0\n           PUTM\n           LDI      640\n           PUTM\n           LDA      qy0\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc0\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qy1\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc1\n           PUTM\n           LDI      640\n           PUTM\n           LDA      qy0\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc0\n           PUTM\n           LDI      640\n           PUTM\n           LDA      qy1\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc1\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qy1\n           PUTM\n           LDI      0\n           PUTM\n           LDA      qc1\n           PUTM\n           LDA      qy1                         ; the next band starts where this one ends\n           STA      qy0\n           LDA      qc1\n           STA      qc0\n           RET\n\n; ---- The icosahedron ----\n\n; turn: the angles for frame t, then every corner (x, y, z) in verts becomes (screen x, screen y, shade) in proj\nturn:      LDA      t                           ; turning about the vertical axis: angle t\n           ANDI     63\n           STA      ai\n           LBA      cos_table\n           ADD\n           TAB\n           LDX\n           STA      ca\n           LBA      sin_table\n           LDA      ai\n           ADD\n           TAB\n           LDX\n           STA      sa\n           TAB\n           LDI      0\n           SUB\n           STA      nsa\n           LDA      t                           ; and about the horizontal axis, half as fast\n           LSRI     1\n           ANDI     63\n           STA      ai\n           LBA      cos_table\n           ADD\n           TAB\n           LDX\n           STA      cb\n           LBA      sin_table\n           LDA      ai\n           ADD\n           TAB\n           LDX\n           STA      sb\n           TAB\n           LDI      0\n           SUB\n           STA      nsb\n\n           LBA      verts\n           TBA\n           STA      p\n           LBA      proj\n           TBA\n           AMP\n           LDI      12\n           STA      count\ncorner:    LDA      p\n           TAB\n           LDX\n           STA      vx\n           INB\n           LDX\n           STA      vy\n           INB\n           LDX\n           STA      vz\n           INB\n           TBA\n           STA      p\n           LDA      vx                          ; x1 = x cos a \u002B z sin a\n           MA\n           LDA      ca\n           MB\n           MUL\n           LDA      vz\n           MA\n           LDA      sa\n           MB\n           MAC\n           MRD\n           ADDI     320                         ; screen x\n           PUTM\n           LDA      vz                          ; z1 = z cos a - x sin a\n           MA\n           LDA      ca\n           MB\n           MUL\n           LDA      vx\n           MA\n           LDA      nsa\n           MB\n           MAC\n           MRD\n           STA      z1\n           LDA      vy                          ; y2 = y cos b - z1 sin b\n           MA\n           LDA      cb\n           MB\n           MUL\n           LDA      z1\n           MA\n           LDA      nsb\n           MB\n           MAC\n           MRD\n           ADDI     200                         ; screen y\n           PUTM\n           LDA      vy                          ; z2 = y sin b \u002B z1 cos b\n           MA\n           LDA      sb\n           MB\n           MUL\n           LDA      z1\n           MA\n           LDA      cb\n           MB\n           MAC\n           MRD\n           ADDI     72                          ; shade = (z2 \u002B 72) * 26 / 256, 0 on the far side to 15 on the near\n           MA\n           MBI      26\n           MUL\n           MRD\n           PUTM\n           LDA      count\n           SUBI     1\n           STA      count\n           JNE      corner\n           RET\n\n; build: the faces that point at the camera, as triangles at mp; ntri counts them\nbuild:     LBA      faces\n           TBA\n           STA      f\n           LDI      20\n           STA      count\nface:      LDA      f                           ; its three corners and its colour ramp\n           TAB\n           LDX\n           STA      o0\n           INB\n           LDX\n           STA      o1\n           INB\n           LDX\n           STA      o2\n           INB\n           LDX\n           STA      ramp\n           INB\n           TBA\n           STA      f\n           LBA      proj                        ; where the corners are on the screen\n           LDA      o0\n           ADD\n           TAB\n           LDX\n           STA      x0\n           INB\n           LDX\n           STA      y0\n           LBA      proj\n           LDA      o1\n           ADD\n           TAB\n           LDX\n           STA      x1\n           INB\n           LDX\n           STA      y1\n           LBA      proj\n           LDA      o2\n           ADD\n           TAB\n           LDX\n           STA      x2\n           INB\n           LDX\n           STA      y2\n           LDA      x0                          ; (x1 - x0)(y2 - y0) - (y1 - y0)(x2 - x0): above 0 when it faces us\n           TAB\n           LDA      x1\n           SUB\n           XA\n           LDA      y0\n           TAB\n           LDA      y2\n           SUB\n           XB\n           XMUL\n           LDA      y1\n           TAB\n           LDA      y0\n           SUB\n           XA\n           LDA      x0\n           TAB\n           LDA      x2\n           SUB\n           XB\n           XMAC\n           XRD\n           CMPI     0\n           JEQ      fnext\n           JMI      fnext\n           LDA      o0                          ; three corners: x, y, depth 0 and the colour for its shade\n           CALL     emit\n           LDA      o1\n           CALL     emit\n           LDA      o2\n           CALL     emit\n           LDA      ntri\n           INA\n           STA      ntri\nfnext:     LDA      count\n           SUBI     1\n           STA      count\n           JNE      face\n           RET\n\n; emit: the corner at offset A in proj as x, y, 0 and ramp[shade], at mp\nemit:      TAB\n           LBA      proj\n           ADD\n           TAB\n           LDX\n           PUTM\n           INB\n           LDX\n           PUTM\n           INB\n           LDI      0\n           PUTM\n           LDX\n           TAB\n           LDA      ramp\n           ADD\n           TAB\n           LDX\n           PUTM\n           RET\n\n; ---- The scroller ----\n\n; prep: where each column of this frame\u0027s scroller goes, into MEMORY from 40600 as x, colour, dots and\n; the row of the top dot; ncol of them\nprep:      LDA      k0                          ; start from the column at the left edge\n           STA      sk\n           LDA      j0\n           STA      sj\n           LDA      k0                          ; each letter keeps its colour\n           STA      ci\n           CALL     glyph\n           LDA      frac                        ; dx = -frac: the first column is partly off the screen\n           TAB\n           LDI      0\n           SUB\n           STA      dx\n           LDA      wave\n           STA      ph\n           LDI      81\n           STA      cols\n           LBA      40600\n           TBA\n           AMP\n           LDI      0\n           STA      ncol\npcol:      LDA      sj                          ; the sixth column of a letter is the gap before the next\n           CMPI     5\n           JEQ      pnext\n           LDA      dx                          ; only columns wholly on the screen\n           CMPI     633\n           JCC      pnext\n           LDA      fp                          ; the dots of this column, a bit each\n           TAB\n           LDA      sj\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JEQ      pnext\n           STA      mask\n           LDA      dx\n           PUTM\n           LDA      dcol\n           PUTM\n           LDA      mask\n           PUTM\n           LBA      40400                       ; the top of the column on the wave\n           LDA      ph\n           ADD\n           TAB\n           LDX\n           PUTM\n           LDA      ncol\n           INA\n           STA      ncol\npnext:     LDA      dx                          ; the next column, 8 pixels on and half a step along the wave\n           ADDI     8\n           STA      dx\n           LDA      ph\n           INA\n           ANDI     127\n           STA      ph\n           LDA      sj\n           INA\n           STA      sj\n           CMPI     6\n           JNE      psame\n           LDI      0\n           STA      sj\n           LDA      sk\n           INA\n           STA      sk\n           LDA      ci                          ; each letter in the next colour\n           INA\n           STA      ci\n           CALL     glyph\npsame:     LDA      cols\n           SUBI     1\n           STA      cols\n           JNE      pcol\n           RET\n\n; dots: the scroller from the columns prep worked out: a 6 by 6 dot from the blitter for each dot of a letter\ndots:      BWI      6\n           BHI      6\n           LDA      ncol\n           CMPI     0\n           JEQ      ddone\n           STA      cols\n           LBA      40600\ndcolumn:   BST                                  ; the blitter is done with the last column: then this one\u0027s x and colour\n           CMPI     0\n           JNE      dcolumn\n           LDX\n           BX\n           INB\n           LDX\n           BC\n           INB\n           LDX\n           STA      mask\n           INB\n           LDX\n           STA      dy\n           INB\ndr0:       LDA      mask                        ; the dots of the column, top down: each its row, and BYGO\n           ANDI     1\n           JEQ      dr1\n           LDA      dy\n           BYGO\ndr1:       LDA      mask\n           ANDI     2\n           JEQ      dr2\n           LDA      dy\n           ADDI     8\n           BYGO\ndr2:       LDA      mask\n           ANDI     4\n           JEQ      dr3\n           LDA      dy\n           ADDI     16\n           BYGO\ndr3:       LDA      mask\n           ANDI     8\n           JEQ      dr4\n           LDA      dy\n           ADDI     24\n           BYGO\ndr4:       LDA      mask\n           ANDI     16\n           JEQ      dr5\n           LDA      dy\n           ADDI     32\n           BYGO\ndr5:       LDA      mask\n           ANDI     32\n           JEQ      dr6\n           LDA      dy\n           ADDI     40\n           BYGO\ndr6:       LDA      mask\n           ANDI     64\n           JEQ      dnext\n           LDA      dy\n           ADDI     48\n           BYGO\ndnext:     LDA      cols\n           SUBI     1\n           STA      cols\n           JNE      dcolumn\nddone:     RET\n\n; advance: the wave and the text move on\nadvance:   LDA      wave                        ; the wave moves on\n           ADDI     2\n           ANDI     127\n           STA      wave\n           LDA      frac                        ; and the text moves 4 pixels left\n           ADDI     4\n           STA      frac\n           CMPI     8\n           JCS      adone\n           SUBI     8\n           STA      frac\n           LDA      j0\n           INA\n           STA      j0\n           CMPI     6\n           JNE      adone\n           LDI      0\n           STA      j0\n           LDA      k0\n           INA\n           STA      k0\n           LBA      msg                         ; back to the start at the end of the message\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JNE      adone\n           LDI      0\n           STA      k0\nadone:     RET\n\n; glyph: fp = where the columns of letter sk start in font, and dcol = its colour; at the end of the message\n; sk goes back to 0\nglyph:     LBA      msg\n           LDA      sk\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JNE      letter\n           LDI      0\n           STA      sk\n           LDA      msg\nletter:    SUBI     32                          ; (character - 32) * 5\n           TAB\n           ADD\n           ADD\n           ADD\n           ADD\n           STA      fp\n           LBA      font\n           LDA      fp\n           ADD\n           STA      fp\n           LBA      rainbow\n           LDA      ci\n           ANDI     15\n           ADD\n           TAB\n           LDX\n           STA      dcol\n           RET\n\n; waves: ytab[ph] = 384 \u002B sin(ph / 2) * 24 / 256 for the 128 half steps round, worked out once\nwaves:     LDI      0\n           STA      ph\nwavestep:  LBA      sin_table\n           LDA      ph\n           LSRI     1\n           ADD\n           TAB\n           LDX\n           MA\n           MBI      24\n           MUL\n           MRD\n           ADDI     384\n           PSA\n           LBA      40400\n           LDA      ph\n           ADD\n           TAB\n           POA\n           STX\n           LDA      ph\n           INA\n           STA      ph\n           CMPI     128\n           JNE      wavestep\n           RET\n\nt:         .DATA    0\ncount:     .DATA    0\nntri:      .DATA    0\nn:         .DATA    0\nspt:       .DATA    0\nnstar:     .DATA    0\nz:         .DATA    0\nzp:        .DATA    0\nsx:        .DATA    0\nsy:        .DATA    0\nph:        .DATA    0\npass:      .DATA    0\ni:         .DATA    0\nck:        .DATA    0\nyc:        .DATA    0\ncmid:      .DATA    0\ncedge:     .DATA    0\ncshine:    .DATA    0\nqy0:       .DATA    0\nqy1:       .DATA    0\nqc0:       .DATA    0\nqc1:       .DATA    0\nnb:        .DATA    0\nnf:        .DATA    0\nnico:      .DATA    0\nicoat:     .DATA    0\nidx:       .DATA    0\nncol:      .DATA    0\nai:        .DATA    0\nca:        .DATA    0\nsa:        .DATA    0\nnsa:       .DATA    0\ncb:        .DATA    0\nsb:        .DATA    0\nnsb:       .DATA    0\np:         .DATA    0\nf:         .DATA    0\nvx:        .DATA    0\nvy:        .DATA    0\nvz:        .DATA    0\nz1:        .DATA    0\no0:        .DATA    0\no1:        .DATA    0\no2:        .DATA    0\nramp:      .DATA    0\nx0:        .DATA    0\ny0:        .DATA    0\nx1:        .DATA    0\ny1:        .DATA    0\nx2:        .DATA    0\ny2:        .DATA    0\nwave:      .DATA    0\nfrac:      .DATA    0\nk0:        .DATA    0\nj0:        .DATA    0\nsk:        .DATA    0\nsj:        .DATA    0\nfp:        .DATA    0\ndx:        .DATA    0\ndy:        .DATA    0\nci:        .DATA    0\ncols:      .DATA    0\nmask:      .DATA    0\ndcol:      .DATA    0\nproj:      .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\nmsg:       .DATA    \u0022EXUARCH DEMO-16    STARS, COPPER BARS, A SHADED ICOSAHEDRON AND THIS SCROLLER, ALL AT ONE \u0022\n           .STRING  \u0022MEGAHERTZ.    ONE BUS TO THE SCREEN: THE BLITTER AND THE RASTERIZER TAKE TURNS.    \u0022\nstardata:  .DATA    577, 817, 151, 632, 65505, 138, 1130, 64968, 55 ; x, y, z of every star\n           .DATA    821, 18, 169, 1239, 668, 55, 64646, 65494, 85\n           .DATA    64841, 64765, 145, 64432, 263, 109, 580, 383, 197\n           .DATA    1246, 375, 48, 64322, 747, 143, 64519, 64701, 17\n           .DATA    65040, 845, 69, 1181, 64641, 207, 625, 65248, 120\n           .DATA    1145, 769, 58, 851, 65058, 171, 65465, 67, 9\n           .DATA    64609, 65516, 175, 65400, 65413, 149, 64601, 493, 73\n           .DATA    16, 596, 66, 825, 65171, 15, 64548, 197, 204\n           .DATA    64703, 65400, 35, 65452, 65371, 25, 64330, 779, 183\n           .DATA    64263, 65017, 61, 64475, 6, 104, 352, 65439, 26\n           .DATA    1044, 333, 58, 65366, 65269, 30, 65535, 65261, 11\n           .DATA    404, 596, 244, 64744, 64855, 71, 64674, 64602, 23\n           .DATA    629, 676, 132, 64988, 440, 151, 65032, 65496, 138\n           .DATA    65042, 542, 204, 64797, 65438, 172, 296, 64818, 109\n           .DATA    448, 65015, 8, 65366, 814, 213, 1152, 65202, 234\n           .DATA    64341, 65011, 55, 339, 793, 162, 1088, 64785, 18\n           .DATA    64860, 65016, 121, 65318, 64599, 205, 1224, 65253, 220\n           .DATA    65474, 65370, 26, 64565, 64764, 61, 1111, 347, 70\n           .DATA    64324, 275, 102, 247, 318, 124, 64782, 246, 131\n           .DATA    1078, 64857, 229, 306, 64954, 168, 64892, 65216, 240\nverts:     .DATA    65498, 61, 0, 38, 61, 0, 65498, 65475, 0 ; x, y, z of the twelve corners, 72 from the middle\n           .DATA    38, 65475, 0, 0, 65498, 61, 0, 38, 61\n           .DATA    0, 65498, 65475, 0, 38, 65475, 61, 0, 65498\n           .DATA    61, 0, 38, 65475, 0, 65498, 65475, 0, 38\nfaces:     .DATA    0, 33, 15, ramp0, 0, 15, 3, ramp1 ; per face: its corners as offsets into proj, and its colour ramp\n           .DATA    0, 3, 21, ramp2, 0, 21, 30, ramp3\n           .DATA    0, 30, 33, ramp1, 3, 15, 27, ramp2\n           .DATA    15, 33, 12, ramp3, 33, 30, 6, ramp0\n           .DATA    30, 21, 18, ramp2, 21, 3, 24, ramp3\n           .DATA    9, 27, 12, ramp0, 9, 12, 6, ramp1\n           .DATA    9, 6, 18, ramp3, 9, 18, 24, ramp0\n           .DATA    9, 24, 27, ramp1, 12, 27, 15, ramp2\n           .DATA    6, 12, 33, ramp0, 18, 6, 30, ramp2\n           .DATA    24, 18, 21, ramp1, 27, 24, 3, ramp3\nramp0:     .DATA    0x00E4, 0x0105, 0x0946, 0x09A7, 0x0A09, 0x0A6A, 0x0ACC, 0x0B2E ; cyan, from the far side to the near\n           .DATA    0x13B0, 0x1412, 0x1494, 0x1516, 0x35B8, 0x5E5A, 0x86FD, 0xBFBF\nramp1:     .DATA    0x2080, 0x28A0, 0x30C0, 0x3900, 0x4940, 0x5161, 0x61A1, 0x71E1 ; orange\n           .DATA    0x8241, 0x9281, 0xA2C1, 0xB321, 0xC3E5, 0xD4CA, 0xEDD0, 0xFED6\nramp2:     .DATA    0x2044, 0x2045, 0x2866, 0x3887, 0x4089, 0x50AA, 0x58CC, 0x68EE ; magenta\n           .DATA    0x7910, 0x8932, 0x9954, 0xA976, 0xBA78, 0xD37A, 0xE4BD, 0xFE3F\nramp3:     .DATA    0x0901, 0x0921, 0x0982, 0x09C2, 0x1243, 0x12A3, 0x1304, 0x1B84 ; green\n           .DATA    0x1C05, 0x2485, 0x2506, 0x25A7, 0x462A, 0x6ECE, 0x9753, 0xC7F8\nbright:    .DATA    0xB0E2, 0xB301, 0xB544, 0x2587, 0x1516 ; the colour of each bar: 5 behind, then 5 in front\n           .DATA    0xF923, 0xFC62, 0xFF86, 0x37E9, 0x1F3F\ndark:      .DATA    0x5061, 0x5160, 0x5262, 0x1283, 0x0A4A ; its edges\n           .DATA    0x7081, 0x7201, 0x7363, 0x1B84, 0x0B4E\nshine:     .DATA    0xB3AE, 0xB48D, 0xB56F, 0x7D90, 0x7556 ; and its shine in the middle\n           .DATA    0xFD54, 0xFE93, 0xFFD5, 0xAFF6, 0xA79F\nrainbow:   .DATA    0xFA08, 0xFC28, 0xFE68, 0xE7E8, 0x9FE8, 0x5FE8, 0x47EE, 0x47F6 ; sixteen colours round the colour wheel\n           .DATA    0x47FF, 0x45BF, 0x439F, 0x5A1F, 0x9A1F, 0xE21F, 0xFA19, 0xFA10\nfont:      .DATA    0, 0, 0, 0, 0, 0, 0, 95, 0, 0 ; 5 columns per character from \u0027 \u0027 to \u0027Z\u0027, bit 0 the top row\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 80, 48, 0, 0, 8, 8, 8, 8, 8\n           .DATA    0, 96, 96, 0, 0, 0, 0, 0, 0, 0\n           .DATA    62, 81, 73, 69, 62, 0, 66, 127, 64, 0\n           .DATA    66, 97, 81, 73, 70, 33, 65, 69, 75, 49\n           .DATA    24, 20, 18, 127, 16, 39, 69, 69, 69, 57\n           .DATA    60, 74, 73, 73, 48, 1, 113, 9, 5, 3\n           .DATA    54, 73, 73, 73, 54, 6, 73, 73, 41, 30\n           .DATA    0, 54, 54, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 126, 9, 9, 9, 126\n           .DATA    127, 73, 73, 73, 54, 62, 65, 65, 65, 34\n           .DATA    127, 65, 65, 65, 62, 127, 73, 73, 73, 65\n           .DATA    127, 9, 9, 9, 1, 62, 65, 73, 73, 122\n           .DATA    127, 8, 8, 8, 127, 0, 65, 127, 65, 0\n           .DATA    32, 64, 65, 63, 1, 127, 8, 20, 34, 65\n           .DATA    127, 64, 64, 64, 64, 127, 2, 12, 2, 127\n           .DATA    127, 4, 8, 16, 127, 62, 65, 65, 65, 62\n           .DATA    127, 9, 9, 9, 6, 62, 65, 81, 33, 94\n           .DATA    127, 9, 25, 41, 70, 70, 73, 73, 73, 49\n           .DATA    1, 1, 127, 1, 1, 63, 64, 64, 64, 63\n           .DATA    31, 32, 64, 32, 31, 63, 64, 56, 64, 63\n           .DATA    99, 20, 8, 20, 99, 3, 4, 120, 4, 3\n           .DATA    97, 81, 73, 69, 67\ncos_table: .DATA    256, 255, 251, 245, 237, 226, 213, 198 ; 256 * cos, 64 steps round\n           .DATA    181, 162, 142, 121, 98, 74, 50, 25\n           .DATA    0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA    65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA    65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA    65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511\n           .DATA    0, 25, 50, 74, 98, 121, 142, 162\n           .DATA    181, 198, 213, 226, 237, 245, 251, 255\nsin_table: .DATA    0, 25, 50, 74, 98, 121, 142, 162 ; 256 * sin\n           .DATA    181, 198, 213, 226, 237, 245, 251, 255\n           .DATA    256, 255, 251, 245, 237, 226, 213, 198\n           .DATA    181, 162, 142, 121, 98, 74, 50, 25\n           .DATA    0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA    65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA    65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA    65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511"
+    },
+    {
+      "name": "Copper bars",
+      "description": "Six shaded bars on a turning cylinder, four rasterizer bands each",
+      "source": "; Copper bars\n; Six bars on a turning cylinder: each goes round a circle seen edge on, so it moves up and down the screen. A bar is\n; four bands of two triangles right across the screen, which the rasterizer shades from a dark edge to the bar\u0027s\n; colour, a near white shine in the middle, and back. The bars on the far side of the circle are drawn first and\n; dimmer, so the near ones pass in front of them.\n; While the rasterizer draws one frame, the CPU builds the next one\u0027s triangles in MEMORY; then it waits for the\n; rasterizer and the frame clock\u0027s beat, shows the frame, copies the new triangles into the list and starts it again.\n           TIMI   60                            ; a frame every 60 ms: about 17 a second\n           LDI    0\n           STA    t\nframe:     LBA    tris                          ; build this frame\u0027s triangles in tris\n           TBA\n           AMP\n           LDI    0\n           STA    ntri\n           STA    pass                          ; pass 0 draws the bars behind, pass 1 those in front\nside:      LDA    t\n           STA    ph\n           LDI    0\n           STA    i\nbar:       LBA    cos_table                     ; behind when cos(ph) \u003C 0\n           LDA    ph\n           ADD\n           TAB\n           LDX\n           CMPI   0\n           JMI    behind\n           LDA    pass\n           CMPI   1\n           JNE    next\n           JMP    draw\nbehind:    LDA    pass\n           CMPI   0\n           JNE    next\ndraw:      LBA    sin_table                     ; yc = 240 \u002B sin(ph) * 200 / 256\n           LDA    ph\n           ADD\n           TAB\n           LDX\n           MA\n           MBI    200\n           MUL\n           MRD\n           ADDI   240\n           STA    yc\n           SUBI   7\n           STA    qy0\n           LDA    pass                          ; colours: pass * 6 \u002B i\n           CMPI   0\n           JEQ    colour\n           LDI    6\ncolour:    TAB\n           LDA    i\n           ADD\n           STA    k\n           LBA    bright\n           ADD\n           TAB\n           LDX\n           STA    cmid\n           LBA    shine\n           LDA    k\n           ADD\n           TAB\n           LDX\n           STA    cshine\n           LBA    dark\n           LDA    k\n           ADD\n           TAB\n           LDX\n           STA    cedge\n           STA    qc0                           ; four bands down the bar: edge, colour, shine, colour, edge\n           LDA    yc\n           SUBI   3\n           STA    qy1\n           LDA    cmid\n           STA    qc1\n           CALL   quad\n           LDA    yc\n           STA    qy1\n           LDA    cshine\n           STA    qc1\n           CALL   quad\n           LDA    yc\n           ADDI   3\n           STA    qy1\n           LDA    cmid\n           STA    qc1\n           CALL   quad\n           LDA    yc\n           ADDI   7\n           STA    qy1\n           LDA    cedge\n           STA    qc1\n           CALL   quad\n           LDA    ntri\n           ADDI   8\n           STA    ntri\nnext:      LDA    ph                            ; the next bar, a little further round\n           ADDI   4\n           ANDI   63\n           STA    ph\n           LDA    i\n           INA\n           STA    i\n           CMPI   6\n           JNE    bar\n           LDA    pass\n           INA\n           STA    pass\n           CMPI   2\n           JNE    side\nwait:      GST                                  ; the last frame is drawn\n           CMPI   0\n           JNE    wait\nbeat:      TST                                  ; and its beat has come\n           CMPI   0\n           JEQ    beat\n           TACK\n           SWAP                                 ; show it, and start on this one\n           CLS\n           LDI    0\n           ALP\n           LBA    tris\n           TBA\n           AMP\n           LDA    ntri\n           STA    count\ncopy:      COPYT\n           LDA    count\n           SUBI   1\n           STA    count\n           JNE    copy\n           LDI    0\n           GADR\n           LDA    ntri\n           GCNT\n           GO\n           LDA    t                             ; turn the cylinder a step\n           INA\n           ANDI   63\n           STA    t\n           JMP    frame\n\n; quad: two triangles across the screen from row qy0 in colour qc0 to row qy1 in colour qc1, into MEMORY at mp;\n; then qy1 and qc1 become qy0 and qc0, for the band below\nquad:      LDI    0\n           PUTM\n           LDA    qy0\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc0\n           PUTM\n           LDI    640\n           PUTM\n           LDA    qy0\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc0\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qy1\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc1\n           PUTM\n           LDI    640\n           PUTM\n           LDA    qy0\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc0\n           PUTM\n           LDI    640\n           PUTM\n           LDA    qy1\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc1\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qy1\n           PUTM\n           LDI    0\n           PUTM\n           LDA    qc1\n           PUTM\n           LDA    qy1                           ; the next band starts where this one ends\n           STA    qy0\n           LDA    qc1\n           STA    qc0\n           RET\n\nt:         .DATA  0\nph:        .DATA  0\npass:      .DATA  0\ni:         .DATA  0\nk:         .DATA  0\nyc:        .DATA  0\ncmid:      .DATA  0\ncedge:     .DATA  0\ncshine:    .DATA  0\nqy0:       .DATA  0\nqy1:       .DATA  0\nqc0:       .DATA  0\nqc1:       .DATA  0\nntri:      .DATA  0\ncount:     .DATA  0\nbright:    .DATA  0xB0E2, 0xB301, 0xB544, 0x2587, 0x1516, 0xA976 ; the colour of each bar: 6 behind, then 6 in front\n           .DATA  0xF923, 0xFC62, 0xFF86, 0x37E9, 0x1F3F, 0xEA1F\ndark:      .DATA  0x5061, 0x5160, 0x5262, 0x1283, 0x0A4A, 0x48AA ; its edges\n           .DATA  0x7081, 0x7201, 0x7363, 0x1B84, 0x0B4E, 0x68EE\nshine:     .DATA  0xB3AE, 0xB48D, 0xB56F, 0x7D90, 0x7556, 0xABF6 ; and its shine in the middle\n           .DATA  0xFD54, 0xFE93, 0xFFD5, 0xAFF6, 0xA79F, 0xF59F\ncos_table: .DATA  256, 255, 251, 245, 237, 226, 213, 198 ; 256 * cos, 64 steps round\n           .DATA  181, 162, 142, 121, 98, 74, 50, 25\n           .DATA  0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA  65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA  65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA  65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511\n           .DATA  0, 25, 50, 74, 98, 121, 142, 162\n           .DATA  181, 198, 213, 226, 237, 245, 251, 255\nsin_table: .DATA  0, 25, 50, 74, 98, 121, 142, 162 ; 256 * sin\n           .DATA  181, 198, 213, 226, 237, 245, 251, 255\n           .DATA  256, 255, 251, 245, 237, 226, 213, 198\n           .DATA  181, 162, 142, 121, 98, 74, 50, 25\n           .DATA  0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA  65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA  65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA  65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511\ntris:      .DATA  0"
+    },
+    {
+      "name": "Starfield",
+      "description": "160 stars flying at you, each a blitter square sized by how near it is",
+      "source": "; Starfield\n; 160 stars fly at the viewer. Each has an x and y across the sky and a distance z; every frame z shrinks, and the\n; star is drawn at 320 \u002B x * 64 / z, 240 \u002B y * 64 / z, so near stars race outwards. The blitter draws each one as a\n; square, bigger and brighter the nearer it is, while the CPU works out the next. A star that comes too close starts\n; again far away, and so does one that leaves the screen, so nearly all of them are always in sight.\n        TIMI   40                               ; a frame every 40 ms: 25 a second\nframe:  LBA    stars\n        TBA\n        STA    p\n        LDI    160\n        STA    n\nstar:   LDA    p                                ; x, y and z of this star\n        TAB\n        LDX\n        STA    sx\n        INB\n        LDX\n        STA    sy\n        INB\n        LDX                                     ; nearer: z = z - 3, or far away again\n        SUBI   3\n        CMPI   8\n        JCC    near\n        LDI    255\nnear:   STX\n        STA    z\n        TBA\n        STA    zp\n        INB\n        TBA\n        STA    p\n        LDA    sx                               ; screen x = 320 \u002B x * 64 / z\n        MA\n        MBI    64\n        MUL\n        LDA    z\n        MB\n        MDIV\n        MRD\n        ADDI   320\n        CMPI   637                              ; off the screen (a negative x is a big number too)\n        JCC    gone\n        BX\n        LDA    sy                               ; screen y = 240 \u002B y * 64 / z\n        MA\n        MBI    64\n        MUL\n        LDA    z\n        MB\n        MDIV\n        MRD\n        ADDI   240\n        CMPI   477\n        JCC    gone\n        BY\n        LDA    z                                ; the nearer, the bigger and brighter\n        CMPI   85\n        JCS    big\n        CMPI   170\n        JCS    mid\n        BWI    1\n        BHI    1\n        BCI    0x9CF3\n        BGO\n        JMP    skip\nmid:    BWI    2\n        BHI    2\n        BCI    0xAD75\n        BGO\n        JMP    skip\nbig:    BWI    3\n        BHI    3\n        BCI    0xFFFF\n        BGO\n        JMP    skip\ngone:   LDA    zp                               ; off the screen: far away again\n        TAB\n        LDI    255\n        STX\nskip:   LDA    n\n        SUBI   1\n        STA    n\n        JNE    star\nwait:   BST                                     ; the last star is drawn\n        CMPI   0\n        JNE    wait\nbeat:   TST                                     ; and the beat has come\n        CMPI   0\n        JEQ    beat\n        TACK\n        SWAP                                    ; show this frame and clear the next\n        CLS\n        JMP    frame\n\np:      .DATA  0\nn:      .DATA  0\nz:      .DATA  0\nzp:     .DATA  0\nsx:     .DATA  0\nsy:     .DATA  0\nstars:  .DATA  51, 64888, 109, 64458, 64728, 218, 919, 64772, 101 ; x, y, z of every star\n        .DATA  1112, 64698, 240, 803, 65019, 17, 64613, 65468, 115\n        .DATA  64547, 65072, 31, 982, 65449, 23, 1041, 64833, 250\n        .DATA  65175, 335, 168, 1112, 64706, 155, 1123, 65392, 20\n        .DATA  65166, 64675, 150, 64806, 65173, 115, 64851, 151, 38\n        .DATA  1063, 65211, 151, 65001, 64791, 156, 1064, 352, 56\n        .DATA  250, 64779, 148, 64518, 199, 23, 1260, 65001, 135\n        .DATA  902, 65455, 206, 11, 65533, 157, 581, 65320, 84\n        .DATA  65278, 670, 54, 65260, 64747, 155, 65490, 119, 134\n        .DATA  131, 537, 122, 65440, 291, 26, 64744, 92, 115\n        .DATA  64936, 594, 95, 64883, 955, 133, 452, 64660, 254\n        .DATA  64578, 609, 150, 1072, 660, 232, 10, 65276, 185\n        .DATA  159, 261, 135, 1100, 676, 124, 64542, 764, 31\n        .DATA  65366, 14, 186, 64527, 64704, 195, 65529, 369, 155\n        .DATA  550, 65162, 191, 305, 860, 179, 146, 64626, 248\n        .DATA  616, 65307, 51, 1227, 64819, 134, 64502, 65026, 204\n        .DATA  65438, 64844, 197, 65275, 65394, 108, 758, 64745, 50\n        .DATA  564, 65402, 148, 65399, 853, 43, 488, 813, 148\n        .DATA  65401, 490, 114, 194, 442, 234, 283, 65052, 46\n        .DATA  64600, 64940, 46, 65211, 392, 67, 64310, 37, 220\n        .DATA  1138, 64953, 75, 65415, 64588, 45, 441, 138, 102\n        .DATA  1222, 203, 89, 64775, 458, 227, 836, 308, 175\n        .DATA  64482, 65515, 238, 1015, 65383, 109, 359, 65387, 34\n        .DATA  697, 343, 110, 64515, 64970, 25, 65116, 65482, 49\n        .DATA  64711, 65276, 161, 64476, 64789, 8, 1046, 64889, 145\n        .DATA  64676, 65324, 165, 64365, 64724, 231, 65112, 301, 104\n        .DATA  64869, 343, 72, 147, 277, 101, 667, 64831, 37\n        .DATA  724, 65534, 130, 706, 65218, 29, 64851, 64789, 199\n        .DATA  128, 560, 75, 685, 741, 185, 64922, 101, 13\n        .DATA  65101, 125, 100, 64861, 457, 147, 64371, 596, 143\n        .DATA  65481, 360, 229, 64633, 469, 224, 65330, 105, 101\n        .DATA  64945, 65308, 205, 65173, 134, 146, 784, 65255, 170\n        .DATA  65174, 299, 215, 65060, 694, 69, 366, 559, 213\n        .DATA  65189, 64989, 140, 743, 65308, 195, 64379, 64637, 210\n        .DATA  65405, 11, 74, 65054, 462, 162, 135, 65495, 214\n        .DATA  156, 65326, 28, 65164, 64789, 66, 650, 64982, 94\n        .DATA  65098, 32, 167, 1224, 765, 8, 688, 906, 175\n        .DATA  134, 681, 172, 64608, 753, 177, 64752, 907, 107\n        .DATA  65077, 23, 235, 64992, 65468, 210, 86, 64757, 213\n        .DATA  346, 65528, 110, 64608, 528, 48, 64957, 64840, 15\n        .DATA  64880, 253, 239, 631, 695, 175, 64859, 296, 219\n        .DATA  1165, 15, 176, 160, 64899, 148, 970, 64848, 13\n        .DATA  64319, 681, 193, 64681, 122, 199, 64831, 65468, 231\n        .DATA  65058, 735, 231, 65125, 64637, 72, 65132, 65179, 136\n        .DATA  65246, 608, 158, 60, 65111, 147, 441, 752, 41\n        .DATA  64510, 907, 197, 174, 882, 125, 1114, 713, 239\n        .DATA  841, 65441, 219, 779, 64847, 144, 64882, 116, 138\n        .DATA  64337, 831, 120, 65011, 290, 9, 64874, 64932, 44\n        .DATA  664, 311, 193, 64753, 183, 23, 60, 441, 140\n        .DATA  898, 181, 131, 64695, 852, 151, 64493, 65088, 56\n        .DATA  65395, 64666, 205, 64661, 83, 123, 1025, 64637, 202\n        .DATA  64520, 65487, 91, 1233, 79, 163, 822, 64988, 185\n        .DATA  65396, 65506, 138, 909, 697, 130, 804, 65087, 186\n        .DATA  868, 839, 232"
+    },
+    {
+      "name": "Sine scroller",
+      "description": "Big dotted letters on a wave, every dot a blitter square",
+      "source": "; Sine scroller\n; Big letters scroll right to left on a sine wave, each letter in the next colour round the wheel. Every dot of every\n; letter is a 6 by 6 square from the blitter on an 8 pixel grid. The font is 5 by 7 dots, each of a letter\u0027s five\n; columns one cell whose bits are its dots from the top down. The screen shows 80 columns of dots; each frame the text\n; moves 4 pixels, and each column finds its height on the wave in a table worked out at the start. The CPU works out\n; the next dot while the blitter fills this one, and BYGO, an instruction made for it, waits for the blitter and\n; sends a dot in one go. MEMORY from 3584 holds the table.\n           BWI      6                           ; every dot is a 6 by 6 square\n           BHI      6\n           CALL     waves\n           TIMI     33                          ; then a frame every 33 ms: 30 a second\nframe:     LDA      k0                          ; start from the column at the left edge\n           STA      k\n           LDA      j0\n           STA      j\n           LDA      k0                          ; each letter keeps its colour\n           STA      ci\n           CALL     glyph\n           LDA      frac                        ; x = -frac: the first column is partly off the screen\n           TAB\n           LDI      0\n           SUB\n           STA      x\n           LDA      wave\n           STA      ph\n           LDI      81\n           STA      cols\ncol:       LDA      j                           ; the sixth column of a letter is the gap before the next\n           CMPI     5\n           JEQ      next\n           LDA      x                           ; only columns wholly on the screen\n           CMPI     633\n           JCC      next\n           LDA      fp                          ; the dots of this column, a bit each\n           TAB\n           LDA      j\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JEQ      next\n           STA      mask\n           LBA      3584                        ; the top of the column on the wave\n           LDA      ph\n           ADD\n           TAB\n           LDX\n           STA      y\ncw:        BST                                  ; the blitter is done with the last column: then its column and colour\n           CMPI     0\n           JNE      cw\n           LDA      x\n           BX\n           LDA      colour\n           BC\nr0:        LDA      mask                        ; the dots of the column, top down\n           ANDI     1\n           JEQ      r1\n           LDA      y                           ; its row, and the dot once the blitter is done with the last\n           BYGO\nr1:        LDA      mask\n           ANDI     2\n           JEQ      r2\n           LDA      y\n           ADDI     8\n           BYGO\nr2:        LDA      mask\n           ANDI     4\n           JEQ      r3\n           LDA      y\n           ADDI     16\n           BYGO\nr3:        LDA      mask\n           ANDI     8\n           JEQ      r4\n           LDA      y\n           ADDI     24\n           BYGO\nr4:        LDA      mask\n           ANDI     16\n           JEQ      r5\n           LDA      y\n           ADDI     32\n           BYGO\nr5:        LDA      mask\n           ANDI     32\n           JEQ      r6\n           LDA      y\n           ADDI     40\n           BYGO\nr6:        LDA      mask\n           ANDI     64\n           JEQ      next\n           LDA      y\n           ADDI     48\n           BYGO\nnext:      LDA      x                           ; the next column, 8 pixels on and half a step along the wave\n           ADDI     8\n           STA      x\n           LDA      ph\n           INA\n           ANDI     127\n           STA      ph\n           LDA      j\n           INA\n           STA      j\n           CMPI     6\n           JNE      same\n           LDI      0\n           STA      j\n           LDA      k\n           INA\n           STA      k\n           LDA      ci                          ; each letter in the next colour\n           INA\n           STA      ci\n           CALL     glyph\nsame:      LDA      cols\n           SUBI     1\n           STA      cols\n           JNE      col\nwait:      BST                                  ; the last dot is drawn\n           CMPI     0\n           JNE      wait\nbeat:      TST                                  ; and the beat has come\n           CMPI     0\n           JEQ      beat\n           TACK\n           SWAP                                 ; show this frame and clear the next\n           CLS\n           LDA      wave                        ; the wave moves on\n           ADDI     2\n           ANDI     127\n           STA      wave\n           LDA      frac                        ; and the text moves 4 pixels left\n           ADDI     4\n           STA      frac\n           CMPI     8\n           JCS      frame\n           SUBI     8\n           STA      frac\n           LDA      j0\n           INA\n           STA      j0\n           CMPI     6\n           JNE      frame\n           LDI      0\n           STA      j0\n           LDA      k0\n           INA\n           STA      k0\n           LBA      msg                         ; back to the start at the end of the message\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JNE      frame\n           LDI      0\n           STA      k0\n           JMP      frame\n\n; glyph: fp = where the columns of letter k start in font, and colour = its colour; at the end of the message\n; k goes back to 0\nglyph:     LBA      msg\n           LDA      k\n           ADD\n           TAB\n           LDX\n           CMPI     0\n           JNE      letter\n           LDI      0\n           STA      k\n           LDA      msg\nletter:    SUBI     32                          ; (character - 32) * 5\n           TAB\n           ADD\n           ADD\n           ADD\n           ADD\n           STA      fp\n           LBA      font\n           LDA      fp\n           ADD\n           STA      fp\n           LBA      rainbow\n           LDA      ci\n           ANDI     15\n           ADD\n           TAB\n           LDX\n           STA      colour\n           RET\n\n; waves: ytab[ph] = 212 \u002B sin(ph / 2) * 60 / 256 for the 128 half steps round, worked out once\nwaves:     LDI      0\n           STA      ph\nwavestep:  LBA      sin_table\n           LDA      ph\n           LSRI     1\n           ADD\n           TAB\n           LDX\n           MA\n           MBI      60\n           MUL\n           MRD\n           ADDI     212\n           PSA\n           LBA      3584\n           LDA      ph\n           ADD\n           TAB\n           POA\n           STX\n           LDA      ph\n           INA\n           STA      ph\n           CMPI     128\n           JNE      wavestep\n           RET\n\nwave:      .DATA    0\nph:        .DATA    0\nfrac:      .DATA    0\nk0:        .DATA    0\nj0:        .DATA    0\nk:         .DATA    0\nj:         .DATA    0\nfp:        .DATA    0\nx:         .DATA    0\ny:         .DATA    0\nci:        .DATA    0\ncols:      .DATA    0\nmask:      .DATA    0\ncolour:    .DATA    0\nmsg:       .DATA    \u0022HELLO FROM DEMO-16!    A SINE SCROLLER AT ONE MEGAHERTZ: EVERY DOT IS A BLITTER SQUARE, \u0022\n           .STRING  \u0022ONE PIXEL A TICK, WHILE THE CPU WORKS OUT THE NEXT ONE.    \u0022\nfont:      .DATA    0, 0, 0, 0, 0, 0, 0, 95, 0, 0 ; 5 columns per character from \u0027 \u0027 to \u0027Z\u0027, bit 0 the top row\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 80, 48, 0, 0, 8, 8, 8, 8, 8\n           .DATA    0, 96, 96, 0, 0, 0, 0, 0, 0, 0\n           .DATA    62, 81, 73, 69, 62, 0, 66, 127, 64, 0\n           .DATA    66, 97, 81, 73, 70, 33, 65, 69, 75, 49\n           .DATA    24, 20, 18, 127, 16, 39, 69, 69, 69, 57\n           .DATA    60, 74, 73, 73, 48, 1, 113, 9, 5, 3\n           .DATA    54, 73, 73, 73, 54, 6, 73, 73, 41, 30\n           .DATA    0, 54, 54, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA    0, 0, 0, 0, 0, 126, 9, 9, 9, 126\n           .DATA    127, 73, 73, 73, 54, 62, 65, 65, 65, 34\n           .DATA    127, 65, 65, 65, 62, 127, 73, 73, 73, 65\n           .DATA    127, 9, 9, 9, 1, 62, 65, 73, 73, 122\n           .DATA    127, 8, 8, 8, 127, 0, 65, 127, 65, 0\n           .DATA    32, 64, 65, 63, 1, 127, 8, 20, 34, 65\n           .DATA    127, 64, 64, 64, 64, 127, 2, 12, 2, 127\n           .DATA    127, 4, 8, 16, 127, 62, 65, 65, 65, 62\n           .DATA    127, 9, 9, 9, 6, 62, 65, 81, 33, 94\n           .DATA    127, 9, 25, 41, 70, 70, 73, 73, 73, 49\n           .DATA    1, 1, 127, 1, 1, 63, 64, 64, 64, 63\n           .DATA    31, 32, 64, 32, 31, 63, 64, 56, 64, 63\n           .DATA    99, 20, 8, 20, 99, 3, 4, 120, 4, 3\n           .DATA    97, 81, 73, 69, 67\nrainbow:   .DATA    0xFA08, 0xFC28, 0xFE68, 0xE7E8, 0x9FE8, 0x5FE8, 0x47EE, 0x47F6 ; sixteen colours round the colour wheel\n           .DATA    0x47FF, 0x45BF, 0x439F, 0x5A1F, 0x9A1F, 0xE21F, 0xFA19, 0xFA10\nsin_table: .DATA    0, 25, 50, 74, 98, 121, 142, 162 ; 256 * sin\n           .DATA    181, 198, 213, 226, 237, 245, 251, 255\n           .DATA    256, 255, 251, 245, 237, 226, 213, 198\n           .DATA    181, 162, 142, 121, 98, 74, 50, 25\n           .DATA    0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA    65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA    65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA    65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511"
+    },
+    {
+      "name": "A shaded icosahedron",
+      "description": "Twenty Gouraud shaded faces tumbling, turned, lit and culled by the CPU every frame",
+      "source": "; A shaded icosahedron\n; Twenty triangles tumbling about two axes. Every frame the CPU turns the twelve corners with the multiply-accumulate\n; unit, gives each corner a shade by how much it faces the viewer, and keeps only the faces that point at the camera,\n; found with the cross product. The rasterizer blends each face\u0027s three corner colours across it (Gouraud shading),\n; and as it is convex no face hides another, so no depth buffer is needed. The CPU works out the next frame while\n; the rasterizer draws this one.\n           TIMI   40                            ; a frame every 40 ms: 25 a second\n           LDI    0\n           STA    t\nframe:     LDA    t                             ; turning about the vertical axis: angle t\n           ANDI   63\n           STA    ai\n           LBA    cos_table\n           ADD\n           TAB\n           LDX\n           STA    ca\n           LBA    sin_table\n           LDA    ai\n           ADD\n           TAB\n           LDX\n           STA    sa\n           TAB\n           LDI    0\n           SUB\n           STA    nsa\n           LDA    t                             ; and about the horizontal axis, half as fast\n           LSRI   1\n           ANDI   63\n           STA    ai\n           LBA    cos_table\n           ADD\n           TAB\n           LDX\n           STA    cb\n           LBA    sin_table\n           LDA    ai\n           ADD\n           TAB\n           LDX\n           STA    sb\n           TAB\n           LDI    0\n           SUB\n           STA    nsb\n           CALL   turn\n           CALL   build\nwait:      GST                                  ; the last frame is drawn\n           CMPI   0\n           JNE    wait\nbeat:      TST                                  ; and its beat has come\n           CMPI   0\n           JEQ    beat\n           TACK\n           SWAP                                 ; show it, and start on this one\n           CLS\n           LDI    0\n           ALP\n           LBA    tris\n           TBA\n           AMP\n           LDA    ntri\n           CMPI   0\n           JEQ    next\n           STA    count\ncopy:      COPYT\n           LDA    count\n           SUBI   1\n           STA    count\n           JNE    copy\n           LDI    0\n           GADR\n           LDA    ntri\n           GCNT\n           GO\nnext:      LDA    t\n           INA\n           STA    t\n           JMP    frame\n\n; turn: every corner (x, y, z) in verts becomes (screen x, screen y, shade 0 to 15) in proj\nturn:\n           LBA    verts\n           TBA\n           STA    p\n           LBA    proj\n           TBA\n           AMP\n           LDI    12\n           STA    count\ncorner:    LDA    p\n           TAB\n           LDX\n           STA    vx\n           INB\n           LDX\n           STA    vy\n           INB\n           LDX\n           STA    vz\n           INB\n           TBA\n           STA    p\n           LDA    vx                            ; x1 = x cos a \u002B z sin a\n           MA\n           LDA    ca\n           MB\n           MUL\n           LDA    vz\n           MA\n           LDA    sa\n           MB\n           MAC\n           MRD\n           ADDI   320                           ; screen x\n           PUTM\n           LDA    vz                            ; z1 = z cos a - x sin a\n           MA\n           LDA    ca\n           MB\n           MUL\n           LDA    vx\n           MA\n           LDA    nsa\n           MB\n           MAC\n           MRD\n           STA    z1\n           LDA    vy                            ; y2 = y cos b - z1 sin b\n           MA\n           LDA    cb\n           MB\n           MUL\n           LDA    z1\n           MA\n           LDA    nsb\n           MB\n           MAC\n           MRD\n           ADDI   240                           ; screen y\n           PUTM\n           LDA    vy                            ; z2 = y sin b \u002B z1 cos b\n           MA\n           LDA    sb\n           MB\n           MUL\n           LDA    z1\n           MA\n           LDA    cb\n           MB\n           MAC\n           MRD\n           ADDI   112                           ; shade = (z2 \u002B 112) * 18 / 256, 0 on the far side to 15 on the near\n           MA\n           MBI    18\n           MUL\n           MRD\n           PUTM\n           LDA    count\n           SUBI   1\n           STA    count\n           JNE    corner\n           RET\n\n; build: the faces that point at the camera, as triangles in tris; ntri says how many\nbuild:     LBA    tris\n           TBA\n           AMP\n           LBA    faces\n           TBA\n           STA    f\n           LDI    0\n           STA    ntri\n           LDI    20\n           STA    count\nface:      LDA    f                             ; its three corners and its colour ramp\n           TAB\n           LDX\n           STA    o0\n           INB\n           LDX\n           STA    o1\n           INB\n           LDX\n           STA    o2\n           INB\n           LDX\n           STA    ramp\n           INB\n           TBA\n           STA    f\n           LBA    proj                          ; where the corners are on the screen\n           LDA    o0\n           ADD\n           TAB\n           LDX\n           STA    x0\n           INB\n           LDX\n           STA    y0\n           LBA    proj\n           LDA    o1\n           ADD\n           TAB\n           LDX\n           STA    x1\n           INB\n           LDX\n           STA    y1\n           LBA    proj\n           LDA    o2\n           ADD\n           TAB\n           LDX\n           STA    x2\n           INB\n           LDX\n           STA    y2\n           LDA    x0                            ; (x1 - x0)(y2 - y0) - (y1 - y0)(x2 - x0): above 0 when it faces us\n           TAB\n           LDA    x1\n           SUB\n           XA\n           LDA    y0\n           TAB\n           LDA    y2\n           SUB\n           XB\n           XMUL\n           LDA    y1\n           TAB\n           LDA    y0\n           SUB\n           XA\n           LDA    x0\n           TAB\n           LDA    x2\n           SUB\n           XB\n           XMAC\n           XRD\n           CMPI   0\n           JEQ    fnext\n           JMI    fnext\n           LDA    o0                            ; three corners: x, y, depth 0 and the colour for its shade\n           CALL   emit\n           LDA    o1\n           CALL   emit\n           LDA    o2\n           CALL   emit\n           LDA    ntri\n           INA\n           STA    ntri\nfnext:     LDA    count\n           SUBI   1\n           STA    count\n           JNE    face\n           RET\n\n; emit: the corner at offset A in proj as x, y, 0 and ramp[shade], at mp\nemit:      TAB\n           LBA    proj\n           ADD\n           TAB\n           LDX\n           PUTM\n           INB\n           LDX\n           PUTM\n           INB\n           LDI    0\n           PUTM\n           LDX\n           TAB\n           LDA    ramp\n           ADD\n           TAB\n           LDX\n           PUTM\n           RET\n\nt:         .DATA  0\ncount:     .DATA  0\nntri:      .DATA  0\nai:        .DATA  0\nca:        .DATA  0\nsa:        .DATA  0\nnsa:       .DATA  0\ncb:        .DATA  0\nsb:        .DATA  0\nnsb:       .DATA  0\np:         .DATA  0\nf:         .DATA  0\nvx:        .DATA  0\nvy:        .DATA  0\nvz:        .DATA  0\nz1:        .DATA  0\no0:        .DATA  0\no1:        .DATA  0\no2:        .DATA  0\nramp:      .DATA  0\nx0:        .DATA  0\ny0:        .DATA  0\nx1:        .DATA  0\ny1:        .DATA  0\nx2:        .DATA  0\ny2:        .DATA  0\nproj:      .DATA  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\n           .DATA  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\nverts:     .DATA  65477, 95, 0, 59, 95, 0, 65477, 65441, 0 ; x, y, z of the twelve corners, 112 from the middle\n           .DATA  59, 65441, 0, 0, 65477, 95, 0, 59, 95\n           .DATA  0, 65477, 65441, 0, 59, 65441, 95, 0, 65477\n           .DATA  95, 0, 59, 65441, 0, 65477, 65441, 0, 59\nfaces:     .DATA  0, 33, 15, ramp0, 0, 15, 3, ramp1 ; per face: its corners as offsets into proj, and its colour ramp\n           .DATA  0, 3, 21, ramp2, 0, 21, 30, ramp3\n           .DATA  0, 30, 33, ramp1, 3, 15, 27, ramp2\n           .DATA  15, 33, 12, ramp3, 33, 30, 6, ramp0\n           .DATA  30, 21, 18, ramp2, 21, 3, 24, ramp3\n           .DATA  9, 27, 12, ramp0, 9, 12, 6, ramp1\n           .DATA  9, 6, 18, ramp3, 9, 18, 24, ramp0\n           .DATA  9, 24, 27, ramp1, 12, 27, 15, ramp2\n           .DATA  6, 12, 33, ramp0, 18, 6, 30, ramp2\n           .DATA  24, 18, 21, ramp1, 27, 24, 3, ramp3\nramp0:     .DATA  0x00E4, 0x0105, 0x0946, 0x09A7, 0x0A09, 0x0A6A, 0x0ACC, 0x0B2E ; cyan, from the far side to the near\n           .DATA  0x13B0, 0x1412, 0x1494, 0x1516, 0x35B8, 0x5E5A, 0x86FD, 0xBFBF\nramp1:     .DATA  0x2080, 0x28A0, 0x30C0, 0x3900, 0x4940, 0x5161, 0x61A1, 0x71E1 ; orange\n           .DATA  0x8241, 0x9281, 0xA2C1, 0xB321, 0xC3E5, 0xD4CA, 0xEDD0, 0xFED6\nramp2:     .DATA  0x2044, 0x2045, 0x2866, 0x3887, 0x4089, 0x50AA, 0x58CC, 0x68EE ; magenta\n           .DATA  0x7910, 0x8932, 0x9954, 0xA976, 0xBA78, 0xD37A, 0xE4BD, 0xFE3F\nramp3:     .DATA  0x0901, 0x0921, 0x0982, 0x09C2, 0x1243, 0x12A3, 0x1304, 0x1B84 ; green\n           .DATA  0x1C05, 0x2485, 0x2506, 0x25A7, 0x462A, 0x6ECE, 0x9753, 0xC7F8\ncos_table: .DATA  256, 255, 251, 245, 237, 226, 213, 198 ; 256 * cos, 64 steps round\n           .DATA  181, 162, 142, 121, 98, 74, 50, 25\n           .DATA  0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA  65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA  65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA  65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511\n           .DATA  0, 25, 50, 74, 98, 121, 142, 162\n           .DATA  181, 198, 213, 226, 237, 245, 251, 255\nsin_table: .DATA  0, 25, 50, 74, 98, 121, 142, 162 ; 256 * sin\n           .DATA  181, 198, 213, 226, 237, 245, 251, 255\n           .DATA  256, 255, 251, 245, 237, 226, 213, 198\n           .DATA  181, 162, 142, 121, 98, 74, 50, 25\n           .DATA  0, 65511, 65486, 65462, 65438, 65415, 65394, 65374\n           .DATA  65355, 65338, 65323, 65310, 65299, 65291, 65285, 65281\n           .DATA  65280, 65281, 65285, 65291, 65299, 65310, 65323, 65338\n           .DATA  65355, 65374, 65394, 65415, 65438, 65462, 65486, 65511\ntris:      .DATA  0"
+    }
+  ]
+}
