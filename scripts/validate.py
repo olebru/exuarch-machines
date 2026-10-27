@@ -11,6 +11,8 @@ BUILT_IN = {
     "RISC-16", "ROM-16", "BLAZE-16", "DSP-16", "FLIP-16", "GPU-16", "TURBO-16", "WORM-16",
 }
 VERSION = re.compile(r"^v?\d+\.\d+(\.\d+)?$")
+MACHINES = "machines"
+FILE_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def safe_path(path):
@@ -19,6 +21,33 @@ def safe_path(path):
     if path.startswith("/") or any(c in path for c in "\\:?#"):
         return False
     return all(part not in ("", ".", "..") for part in path.split("/"))
+
+
+def is_file_with_exact_case(root, path):
+    directory = root
+    for part in path.split("/"):
+        if not os.path.isdir(directory) or part not in os.listdir(directory):
+            return False
+        directory = os.path.join(directory, part)
+    return os.path.isfile(directory)
+
+
+def files_in_machines(root):
+    found = []
+    for directory, _, names in os.walk(os.path.join(root, MACHINES)):
+        for name in names:
+            found.append(os.path.relpath(os.path.join(directory, name), root).replace(os.sep, "/"))
+    return sorted(found)
+
+
+def check_listed(root, listed):
+    problems = []
+    for path in files_in_machines(root):
+        if not FILE_NAME.match(os.path.basename(path)):
+            problems.append(f"{path} must be named in lower case without spaces, such as machines/zed8.json")
+        if path not in listed:
+            problems.append(f"{path} is not in index.json: add an entry whose file or image is {path}, or remove the file")
+    return problems
 
 
 def strip_comments(text):
@@ -38,6 +67,7 @@ def check(root):
     if not isinstance(machines, list):
         return ['index.json needs a "machines" list']
     names = set()
+    listed = set()
     for number, machine in enumerate(machines, 1):
         where = f"machine {number}"
         if not isinstance(machine, dict):
@@ -63,17 +93,19 @@ def check(root):
         if tags is not None and not (isinstance(tags, list) and all(isinstance(t, str) for t in tags)):
             problems.append(f"{where}: tags must be a list of words")
         problems += check_file(root, where, name, machine.get("file"))
+        listed.add(machine.get("file"))
         image = machine.get("image")
         if image is not None:
             problems += check_image(root, where, image)
-    return problems
+            listed.add(image)
+    return problems + check_listed(root, listed)
 
 
 def check_file(root, where, name, file):
     if not safe_path(file):
         return [f"{where}: file must be a path inside this repository, such as machines/zed8.json"]
     path = os.path.join(root, file)
-    if not os.path.isfile(path):
+    if not is_file_with_exact_case(root, file):
         return [f"{where}: {file} is missing"]
     if os.path.getsize(path) > MAX_PACKAGE:
         return [f"{where}: {file} is larger than {MAX_PACKAGE // (1024 * 1024)} MB"]
@@ -93,7 +125,7 @@ def check_image(root, where, image):
     if not safe_path(image) or not image.lower().endswith(".png"):
         return [f"{where}: image must be a .png inside this repository"]
     path = os.path.join(root, image)
-    if not os.path.isfile(path):
+    if not is_file_with_exact_case(root, image):
         return [f"{where}: {image} is missing"]
     if os.path.getsize(path) > MAX_IMAGE:
         return [f"{where}: {image} is larger than {MAX_IMAGE // 1024} KB"]
