@@ -8,6 +8,15 @@
       "tags": ["placeholder", "lcd"],
       "minVersion": "1.39.0",
       "file": "machines/placeholder.json"
+    },
+        {
+      "name": "DEMO-16",
+      "author": "ExµArch",
+      "tagline": "Graphics experiments",
+      "description": "Graphics experiments",
+      "tags": ["graphics", "experiments"],
+      "minVersion": "1.39.0",
+      "file": "machines/demo-16.json"
     }
   ]
 }
