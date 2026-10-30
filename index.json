@@ -8,8 +8,8 @@
       "tags": ["placeholder", "lcd"],
       "minVersion": "1.39.0",
       "file": "machines/placeholder.json"
-    },
-        {
+     },
+     {
       "name": "DEMO-16",
       "author": "ExµArch",
       "tagline": "Graphics experiments",
@@ -17,6 +17,15 @@
       "tags": ["graphics", "experiments"],
       "minVersion": "1.39.0",
       "file": "machines/demo-16.json"
+    },
+    {
+      "name": "SHARP-16",
+      "author": "ExµArch",
+      "tagline": "Target machine for the 'hidden' sharpc transpiler ;)",
+      "description": "sharpc",
+      "tags": ["transpilation", "higherlevel"],
+      "minVersion": "1.39.0",
+      "file": "machines/sharp-16.json"
     }
   ]
 }
